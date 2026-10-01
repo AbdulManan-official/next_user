@@ -30,9 +30,9 @@ class VideoViewerScreen extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: AppColors.goldGradient,
+                gradient: LinearGradient(colors: AppColors.goldGradient),
               ),
               child: const Icon(
                 Icons.play_arrow_rounded,

@@ -3,67 +3,51 @@ import '../utils/app_theme_styles.dart';
 
 enum ButtonVariant { primary, outlined, text, danger }
 
-/// Reusable premium styled button with gradient, loading state, and icons.
+/// Luxury gradient primary button supporting loading spinner, icon,
+/// and responsive font scaling.
 class CustomButton extends StatelessWidget {
+  final String text;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+  final dynamic icon; // IconData or Widget
+  final double? width;
+  final double height;
+  final Color? backgroundColor;
+  final ButtonVariant variant;
+
   const CustomButton({
     super.key,
     required this.text,
     required this.onPressed,
-    this.variant = ButtonVariant.primary,
     this.isLoading = false,
-    this.isDisabled = false,
     this.icon,
-    this.height = 52,
-    this.width = double.infinity,
-    this.borderRadius = 14,
-    this.textStyle,
+    this.width,
+    this.height = 54,
+    this.backgroundColor,
+    this.variant = ButtonVariant.primary,
   });
-
-  final String text;
-  final VoidCallback? onPressed;
-  final ButtonVariant variant;
-  final bool isLoading;
-  final bool isDisabled;
-  final Widget? icon;
-  final double height;
-  final double width;
-  final double borderRadius;
-  final TextStyle? textStyle;
 
   @override
   Widget build(BuildContext context) {
-    final bool active = !isDisabled && !isLoading && onPressed != null;
+    final isDisabled = onPressed == null || isLoading;
 
     if (variant == ButtonVariant.outlined) {
       return SizedBox(
-        width: width,
+        width: width ?? double.infinity,
         height: height,
         child: OutlinedButton(
-          onPressed: active ? onPressed : null,
+          onPressed: isDisabled ? null : onPressed,
           style: OutlinedButton.styleFrom(
             side: BorderSide(
-              color: active ? AppColors.gold : AppColors.border,
+              color: isDisabled ? AppColors.border : AppColors.gold,
               width: 1.5,
             ),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(borderRadius),
+              borderRadius: BorderRadius.circular(14),
             ),
           ),
-          child: _buildContent(
-            textColor: active ? AppColors.gold : AppColors.textMuted,
-          ),
-        ),
-      );
-    }
-
-    if (variant == ButtonVariant.text) {
-      return SizedBox(
-        width: width,
-        height: height,
-        child: TextButton(
-          onPressed: active ? onPressed : null,
-          child: _buildContent(
-            textColor: active ? AppColors.gold : AppColors.textMuted,
+          child: _buildChild(
+            isDisabled ? AppColors.textMuted : AppColors.gold,
           ),
         ),
       );
@@ -71,49 +55,57 @@ class CustomButton extends StatelessWidget {
 
     if (variant == ButtonVariant.danger) {
       return SizedBox(
-        width: width,
+        width: width ?? double.infinity,
         height: height,
         child: ElevatedButton(
-          onPressed: active ? onPressed : null,
+          onPressed: isDisabled ? null : onPressed,
           style: ElevatedButton.styleFrom(
-            backgroundColor: active ? AppColors.error : AppColors.surfaceElevated,
+            backgroundColor: isDisabled ? AppColors.surfaceElevated : AppColors.error,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(borderRadius),
+              borderRadius: BorderRadius.circular(14),
             ),
             elevation: 0,
           ),
-          child: _buildContent(textColor: Colors.white),
+          child: _buildChild(Colors.white),
         ),
       );
     }
 
-    // Default: Primary Gold Gradient
     return Container(
-      width: width,
+      width: width ?? double.infinity,
       height: height,
       decoration: BoxDecoration(
-        gradient: active ? AppColors.goldGradient : null,
-        color: active ? null : AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: active
-            ? [
+        borderRadius: BorderRadius.circular(14),
+        gradient: isDisabled
+            ? null
+            : const LinearGradient(
+                colors: AppColors.goldGradient,
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+        color: isDisabled ? AppColors.surfaceElevated : null,
+        boxShadow: isDisabled
+            ? null
+            : [
                 BoxShadow(
                   color: AppColors.gold.withValues(alpha: 0.25),
-                  blurRadius: 14,
+                  blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),
-              ]
-            : null,
+              ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: active ? onPressed : null,
-          borderRadius: BorderRadius.circular(borderRadius),
-          child: Center(
-            child: _buildContent(
-              textColor: active ? AppColors.textOnGold : AppColors.textMuted,
+          onTap: isDisabled ? null : onPressed,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Center(
+              child: _buildChild(
+                isDisabled ? AppColors.textMuted : AppColors.textOnGold,
+              ),
             ),
           ),
         ),
@@ -121,11 +113,11 @@ class CustomButton extends StatelessWidget {
     );
   }
 
-  Widget _buildContent({required Color textColor}) {
+  Widget _buildChild(Color textColor) {
     if (isLoading) {
       return SizedBox(
-        width: 22,
-        height: 22,
+        width: 24,
+        height: 24,
         child: CircularProgressIndicator(
           strokeWidth: 2.5,
           valueColor: AlwaysStoppedAnimation<Color>(textColor),
@@ -133,22 +125,36 @@ class CustomButton extends StatelessWidget {
       );
     }
 
-    final effectiveStyle = (textStyle ?? AppTextStyles.labelLarge).copyWith(
-      color: textColor,
-    );
-
-    if (icon != null) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          icon!,
-          const SizedBox(width: 8),
-          Text(text, style: effectiveStyle),
-        ],
+    Widget? iconWidget;
+    if (icon is IconData) {
+      iconWidget = Icon(icon as IconData, color: textColor, size: 20);
+    } else if (icon is Widget) {
+      iconWidget = IconTheme(
+        data: IconThemeData(color: textColor, size: 20),
+        child: icon as Widget,
       );
     }
 
-    return Text(text, style: effectiveStyle);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (iconWidget != null) ...[
+          iconWidget,
+          const SizedBox(width: 10),
+        ],
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.button.copyWith(
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

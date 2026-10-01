@@ -68,7 +68,11 @@ class _HomeViewState extends State<HomeView> {
                     width: double.infinity,
                     padding: EdgeInsets.all(context.r(20)),
                     decoration: BoxDecoration(
-                      gradient: AppColors.cardGradient,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [AppColors.surfaceElevated, AppColors.surface],
+                      ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: AppColors.border, width: 1),
                     ),
