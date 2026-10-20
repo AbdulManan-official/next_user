@@ -1,449 +1,428 @@
-# 🚀 Backend Integration & Database Guide — Client Auth Sync (Laravel)
-
-**Application:** Next User — Mobile Concierge & Client Moving App  
-**Companion App:** `next_gen` (Staff, Surveyor & Driver Mobile App)  
-**Backend Framework:** **Laravel (PHP)** with Laravel Sanctum  
-**Live Production Host:** `https://daydoenterprises.us`  
-**Base API Endpoint:** `https://daydoenterprises.us/api`  
-**Database:** MySQL / MariaDB (shared `users` table with `role = 'client'`)  
+# 🚀 Next User — Production Auth & Backend Integration Guide
+**Node.js (Express) + MySQL + Firebase Authentication + Flutter Client**
 
 ---
 
-## 1. Architecture Overview (Aligned with `next_gen`)
+## 0. The Big Picture
 
-In this ecosystem:
-* `next_gen` handles **staff members** (`role = 'surveyor'`, `role = 'driver'`) who log in using email/password.
-* `next_user` handles **end-clients / customers** (`role = 'client'`) who use modern **passwordless authentication** (Phone SMS OTP, Google OAuth, Apple Sign-In) through Firebase.
-* Once Firebase verifies the user's phone or OAuth credential, the Flutter app calls the Laravel API:  
-  `POST https://daydoenterprises.us/api/auth/sync`
-* The Laravel backend executes a **"Find or Create"** check in the shared `users` table:
-  * If the client exists $\rightarrow$ Returns their record & Sanctum Bearer token.
-  * If the client is new $\rightarrow$ Creates a new record with `role = 'client'`, generates a Sanctum Bearer token, and flags `is_profile_complete: false` so the app prompts them for their Name & Email.
+```
+One Person = One Firebase UID = One Backend User
+```
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Client as Customer (Mobile App)
-    participant App as next_user (Flutter)
-    participant Firebase as Firebase Auth (OTP/OAuth)
-    participant Laravel as Laravel API (daydoenterprises.us)
-    participant DB as MySQL (users table)
+Every user must end with: **Full Name + Email + Verified Phone + A Way to Log In (Email/Password or Google OAuth)**.
 
-    Client->>App: Enters Phone (+92/+44) & Receives SMS OTP
-    App->>Firebase: Verify OTP
-    Firebase-->>App: Returns Firebase UID & ID Token
-    
-    App->>Laravel: POST /api/auth/sync { firebase_uid, phone, login_type, device_token }
-    Note over Laravel: Find or Create client record
-    Laravel->>DB: SELECT * FROM users WHERE firebase_uid = ? OR phone = ?
-    
-    alt Client Does Not Exist (New Registration)
-        Laravel->>DB: INSERT INTO users (firebase_uid, phone, login_type, role='client', status='active')
-        DB-->>Laravel: New user id
-    else Client Exists (Login)
-        Laravel->>DB: UPDATE users SET last_login_at = NOW(), device_token = ? WHERE id = ?
-    end
-    
-    Laravel-->>App: 200 OK { token: "1|sanctum...", user: { id, name, email, phone, role: "client", is_profile_complete } }
-    App->>App: Save session (token, user_id) in SessionService
-    
-    alt is_profile_complete == false (Name or Email is empty)
-        App->>Client: Show "Add Your Details" Screen
-        Client->>App: Submits Name & Email
-        App->>Laravel: PUT /api/user/profile { name, email } (Bearer Token)
-        Laravel->>DB: UPDATE users SET name = ?, email = ? WHERE id = ?
-        Laravel-->>App: 200 OK { user updated, is_profile_complete: true }
-    end
-    
-    App->>Client: Redirect to Luxury Home Screen
+### Strict Non-Negotiable Rules:
+1. **Backend Key is `firebase_uid`**: Never rely on email or phone as primary identity keys.
+2. **Verified Token Extraction**: Email and phone must be read from the cryptographically verified Firebase ID token (`req.decoded`), never trusted from the client request body.
+3. **Fresh Token on Link**: After linking any credential (phone or email), the Flutter client must immediately call `await getIdToken(true)` so subsequent API requests carry the refreshed claims.
+4. **No Unverified Merges**: Never merge backend accounts based on an unverified email.
+5. **Strict Profile Gate**: If `is_profile_complete == false`, the client is gated and can only navigate to the Complete Profile screen.
+
+### Matrix: Signup Method $\rightarrow$ Missing Fields $\rightarrow$ Linking Call:
+| Signup Method | Complete Profile Must Collect | Firebase Link Method |
+| :--- | :--- | :--- |
+| **Phone OTP** | Full Name, Email, Password | `AuthService.instance.linkEmailPassword(email, password)` |
+| **Email + Password** | Full Name, Phone + SMS OTP | `AuthService.instance.linkPhone(verificationId, code)` |
+| **Google OAuth** | Phone + SMS OTP, Password (optional) | `AuthService.instance.linkPhone(verificationId, code)` |
+
+**Unified One-Line Lifecycle Flow:**
+$$\text{Login / Signup} \longrightarrow \text{Firebase User} \longrightarrow \text{POST /auth/sync} \longrightarrow \text{missing[]} \longrightarrow \text{Complete Profile (if needed)} \longrightarrow \text{Home}$$
+
+---
+
+## Part A — Firebase Console & Android Setup
+
+### A1. Sign-In Providers
+Go to **Firebase Console $\rightarrow$ Authentication $\rightarrow$ Sign-in method**:
+* Enable **Email/Password** (Email link optional).
+* Enable **Phone**.
+* Enable **Google** (Configure support email).
+* Keep **Apple** disabled for Android-first launch.
+
+### A2. Android SHA Fingerprints
+Run in your terminal from the project root:
+```bash
+cd android
+./gradlew signingReport
+```
+*(On Windows PowerShell: `.\gradlew.bat signingReport`)*
+
+1. Copy both **SHA-1** and **SHA-256** fingerprints for the `debug` and `release` variants.
+2. Paste them into **Firebase Console $\rightarrow$ Project Settings $\rightarrow$ Your Android App $\rightarrow$ Add Fingerprint**.
+3. Download the updated `google-services.json` and place it in `android/app/google-services.json`.
+
+### A3. SMS Region Policy
+In **Authentication $\rightarrow$ Settings $\rightarrow$ SMS region policy**:
+* Allow **Pakistan (+92)** and **United Kingdom (+44)**.
+
+### A4. Phone Numbers for Testing
+In **Authentication $\rightarrow$ Sign-in method $\rightarrow$ Phone $\rightarrow$ Phone numbers for testing**:
+* Add test numbers with fixed 6-digit verification codes (e.g., `+923001234567` with code `123456`).
+* These bypass telecom SMS gateways, saving SMS costs and avoiding daily limits during QA.
+
+### A5. Account Linking Policy
+In **Authentication $\rightarrow$ Settings**:
+* Ensure **"Link accounts that use the same email"** is selected.
+
+### A6. Firebase Billing Plan
+* Upgrade to the **Blaze (Pay-as-you-go) Plan** before client production launch. (The free Spark plan caps SMS at 10 per day).
+
+### A7. Android Manifest Configuration
+In `android/app/src/main/AndroidManifest.xml`, ensure on the `<application>` tag:
+```xml
+android:enableOnBackInvokedCallback="true"
 ```
 
 ---
 
-## 2. Database Migration for Laravel (`users` table)
+## Part B — Backend Implementation (Node.js + Express + MySQL)
 
-Since `next_gen` already uses the `users` table on `daydoenterprises.us`, create a new migration to add the necessary columns for `next_user` client sync:
+### B1. Installation & Initialization
+```bash
+npm install express firebase-admin mysql2 dotenv
+```
 
-### Migration: `database/migrations/xxxx_xx_xx_add_firebase_and_client_fields_to_users_table.php`
+#### `firebase.js`
+```javascript
+const admin = require('firebase-admin');
 
-```php
-<?php
+admin.initializeApp({
+  credential: admin.credential.cert(require(process.env.FIREBASE_KEY_PATH)),
+});
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+module.exports = admin;
+```
 
-return new class extends Migration
-{
-    public function up(): void
-    {
-        Schema::table('users', function (Blueprint $table) {
-            // Firebase UID for cross-platform identity linking
-            if (!Schema::hasColumn('users', 'firebase_uid')) {
-                $table->string('firebase_uid', 128)->nullable()->unique()->after('id');
-            }
+---
 
-            // Client registration type: 'phone', 'email', 'google', 'apple'
-            if (!Schema::hasColumn('users', 'login_type')) {
-                $table->string('login_type', 30)->default('email')->after('firebase_uid');
-            }
+### B2. MySQL Database Schema
+MySQL allows multiple `NULL` values in a `UNIQUE` column, allowing email and phone to remain null until collected and verified.
 
-            // Phone number with country code (e.g. +923001234567 or +447911123456)
-            if (!Schema::hasColumn('users', 'phone')) {
-                $table->string('phone', 30)->nullable()->unique()->after('email');
-            }
+```sql
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  firebase_uid VARCHAR(128) NOT NULL UNIQUE,
+  name VARCHAR(100) NULL,
+  email VARCHAR(255) NULL UNIQUE,
+  phone VARCHAR(20) NULL UNIQUE,
+  fcm_token VARCHAR(255) NULL,
+  email_verified TINYINT(1) NOT NULL DEFAULT 0,
+  role VARCHAR(20) NOT NULL DEFAULT 'client',
+  is_profile_complete TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_firebase_uid (firebase_uid),
+  INDEX idx_phone (phone),
+  INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+```
 
-            // Flag if phone was verified via SMS OTP
-            if (!Schema::hasColumn('users', 'phone_verified')) {
-                $table->boolean('phone_verified')->default(false)->after('phone');
-            }
+---
 
-            // Device token for FCM push notifications
-            if (!Schema::hasColumn('users', 'device_token')) {
-                $table->text('device_token')->nullable()->after('remember_token');
-            }
+### B3. Token Verification Middleware (`auth.middleware.js`)
+Reads the Firebase ID token from the standard `Authorization: Bearer <token>` header:
 
-            // Account status
-            if (!Schema::hasColumn('users', 'status')) {
-                $table->string('status', 20)->default('active')->after('device_token');
-            }
+```javascript
+const admin = require('./firebase');
 
-            // Last login timestamp
-            if (!Schema::hasColumn('users', 'last_login_at')) {
-                $table->timestamp('last_login_at')->nullable()->after('updated_at');
-            }
-        });
-    }
+exports.verifyToken = async (req, res, next) => {
+  const match = (req.headers.authorization || '').match(/^Bearer (.+)$/);
+  if (!match) return res.status(401).json({ code: 'NO_TOKEN' });
 
-    public function down(): void
-    {
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn([
-                'firebase_uid',
-                'login_type',
-                'phone',
-                'phone_verified',
-                'device_token',
-                'status',
-                'last_login_at',
-            ]);
-        });
-    }
+  try {
+    req.decoded = await admin.auth().verifyIdToken(match[1]);
+    next();
+  } catch (e) {
+    return res.status(401).json({ code: 'BAD_TOKEN' });
+  }
 };
 ```
 
 ---
 
-## 3. Laravel API Routes (`routes/api.php`)
+### B4. Database Repository (`users.repo.js`)
 
-Add the following routes to your Laravel `routes/api.php` file:
+```javascript
+const mysql = require('mysql2/promise');
 
-```php
-use App\Http\Controllers\Api\ClientAuthController;
-use App\Http\Controllers\Api\UserProfileController;
-
-// Public client authentication sync endpoint
-Route::post('/auth/sync', [ClientAuthController::class, 'sync']);
-
-// Protected user routes (Requires Bearer Sanctum Token)
-Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user/profile', [UserProfileController::class, 'getProfile']);
-    Route::put('/user/profile', [UserProfileController::class, 'updateProfile']);
-    Route::post('/user/fcm-token', [UserProfileController::class, 'updateFcmToken']);
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
 });
+
+const one = async (sql, params) => (await pool.query(sql, params))[0][0] || null;
+
+exports.findByUid = (uid) => 
+  one('SELECT * FROM users WHERE firebase_uid = ?', [uid]);
+
+exports.findByEmail = (email) => 
+  one('SELECT * FROM users WHERE email = ?', [email]);
+
+exports.findByPhone = (phone) => 
+  one('SELECT * FROM users WHERE phone = ?', [phone]);
+
+exports.create = async ({ uid, name, email, phone, emailVerified }) => {
+  await pool.query(
+    'INSERT INTO users (firebase_uid, name, email, phone, email_verified, role) VALUES (?, ?, ?, ?, ?, ?)',
+    [uid, name || null, email || null, phone || null, emailVerified ? 1 : 0, 'client']
+  );
+};
+
+// Keep database synchronized with verified claims from token (never overwrite with NULL)
+exports.syncFromToken = (uid, { email, phone, emailVerified }) =>
+  pool.query(
+    'UPDATE users SET email = COALESCE(?, email), phone = COALESCE(?, phone), email_verified = ? WHERE firebase_uid = ?',
+    [email || null, phone || null, emailVerified ? 1 : 0, uid]
+  );
+
+exports.setName = (uid, name) =>
+  pool.query('UPDATE users SET name = ? WHERE firebase_uid = ?', [name, uid]);
+
+exports.setComplete = (uid, complete) =>
+  pool.query('UPDATE users SET is_profile_complete = ? WHERE firebase_uid = ?', [complete ? 1 : 0, uid]);
+
+exports.deleteByUid = (uid) =>
+  pool.query('DELETE FROM users WHERE firebase_uid = ?', [uid]);
+
+exports.setFcmToken = (uid, token) =>
+  pool.query('UPDATE users SET fcm_token = ? WHERE firebase_uid = ?', [token, uid]);
 ```
 
 ---
 
-## 4. Laravel Controller Implementation
+### B5. Express API Routes (`auth.routes.js`)
 
-### Controller 1: `App\Http\Controllers\Api\ClientAuthController.php`
+```javascript
+const router = require('express').Router();
+const admin = require('./firebase');
+const repo = require('./users.repo');
+const { verifyToken } = require('./auth.middleware');
 
-```php
-<?php
+const providersOf = async (uid) =>
+  (await admin.auth().getUser(uid)).providerData.map((p) => p.providerId);
 
-namespace App\Http\Controllers\Api;
+function statusOf(user, providers) {
+  const missing = [];
+  if (!user.name || user.name.trim().length < 2) missing.push('name');
+  if (!user.email) missing.push('email');
+  if (!user.phone) missing.push('phone');
 
-use App\Http\Controllers\Controller;
-use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Carbon\Carbon;
+  const hasLogin = providers.includes('password') || providers.includes('google.com');
+  if (!hasLogin) missing.push('password');
 
-class ClientAuthController extends Controller
-{
-    /**
-     * Find or create client account on mobile authentication sync
-     * POST /api/auth/sync
-     */
-    public function sync(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'firebase_uid'  => 'required|string|max:128',
-            'login_type'    => 'required|string|in:phone,email,google,apple',
-            'phone'         => 'nullable|string|max:30',
-            'email'         => 'nullable|email|max:150',
-            'name'          => 'nullable|string|max:150',
-            'device_token'  => 'nullable|string',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors'  => $validator->errors()
-            ], 422);
-        }
-
-        $firebaseUid = $request->input('firebase_uid');
-        $loginType   = $request->input('login_type');
-        $phone       = $request->input('phone');
-        $email       = $request->input('email');
-        $name        = $request->input('name');
-        $deviceToken = $request->input('device_token');
-
-        // 1. Find user by firebase_uid, or fallback to phone / email
-        $user = User::where('firebase_uid', $firebaseUid)->first();
-
-        if (!$user && $phone) {
-            $user = User::where('phone', $phone)->first();
-        }
-
-        if (!$user && $email) {
-            $user = User::where('email', $email)->first();
-        }
-
-        if ($user) {
-            // Existing user: Link firebase_uid if missing & update login metadata
-            $updates = [
-                'last_login_at' => Carbon::now(),
-            ];
-
-            if (!$user->firebase_uid) {
-                $updates['firebase_uid'] = $firebaseUid;
-            }
-            if ($deviceToken) {
-                $updates['device_token'] = $deviceToken;
-            }
-            if ($phone && !$user->phone) {
-                $updates['phone'] = $phone;
-                $updates['phone_verified'] = true;
-            }
-            if ($name && (empty($user->name) || $user->name === 'User')) {
-                $updates['name'] = $name;
-            }
-            if ($email && empty($user->email)) {
-                $updates['email'] = $email;
-            }
-
-            $user->update($updates);
-        } else {
-            // 2. New client: Insert record
-            $user = User::create([
-                'firebase_uid'   => $firebaseUid,
-                'login_type'     => $loginType,
-                'name'           => $name ?: null,
-                'email'          => $email ?: null,
-                'phone'          => $phone ?: null,
-                'phone_verified' => $loginType === 'phone',
-                'role'           => 'client', // Differentiates from 'driver' / 'surveyor'
-                'status'         => 'active',
-                'device_token'   => $deviceToken ?: null,
-                'password'       => bcrypt(uniqid('client_', true)), // Safe randomized password
-                'last_login_at'  => Carbon::now(),
-            ]);
-        }
-
-        // 3. Check account status
-        if ($user->status === 'suspended' || $user->status === 'banned') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Your account has been deactivated. Please contact support.',
-            ], 403);
-        }
-
-        // 4. Generate Laravel Sanctum Bearer Token
-        $token = $user->createToken('client-mobile-token')->plainTextToken;
-
-        // 5. Check if profile requires completion (Name or Email is empty)
-        $isProfileComplete = !empty(trim($user->name ?? '')) && !empty(trim($user->email ?? ''));
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Authentication synchronized successfully.',
-            'token'   => $token,
-            'user'    => [
-                'id'                  => $user->id,
-                'firebase_uid'        => $user->firebase_uid,
-                'name'                => $user->name,
-                'email'               => $user->email,
-                'phone'               => $user->phone,
-                'role'                => $user->role ?? 'client',
-                'status'              => $user->status,
-                'is_profile_complete' => $isProfileComplete,
-                'created_at'          => $user->created_at,
-            ],
-        ], 200);
-    }
+  return { missing, is_profile_complete: missing.length === 0 };
 }
-```
 
----
+const fromToken = (decoded) => ({
+  email: decoded.email || null,
+  phone: decoded.phone_number || null,
+  emailVerified: !!decoded.email_verified,
+});
 
-### Controller 2: `App\Http\Controllers\Api\UserProfileController.php`
+async function respond(res, uid) {
+  const user = await repo.findByUid(uid);
+  const providers = await providersOf(uid);
+  const st = statusOf(user, providers);
 
-```php
-<?php
+  await repo.setComplete(uid, st.is_profile_complete);
 
-namespace App\Http\Controllers\Api;
-
-use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\Rule;
-
-class UserProfileController extends Controller
-{
-    /**
-     * Get logged-in user profile
-     * GET /api/user/profile
-     */
-    public function getProfile(Request $request)
-    {
-        $user = $request->user();
-
-        $isProfileComplete = !empty(trim($user->name ?? '')) && !empty(trim($user->email ?? ''));
-
-        return response()->json([
-            'success' => true,
-            'user' => [
-                'id'                  => $user->id,
-                'firebase_uid'        => $user->firebase_uid,
-                'name'                => $user->name,
-                'email'               => $user->email,
-                'phone'               => $user->phone,
-                'role'                => $user->role,
-                'status'              => $user->status,
-                'is_profile_complete' => $isProfileComplete,
-                'created_at'          => $user->created_at,
-            ]
-        ], 200);
-    }
-
-    /**
-     * Update user profile details (Name & Email)
-     * PUT /api/user/profile
-     */
-    public function updateProfile(Request $request)
-    {
-        $user = $request->user();
-
-        $validator = Validator::make($request->all(), [
-            'name'  => 'required|string|max:150',
-            'email' => [
-                'required',
-                'email',
-                'max:150',
-                Rule::unique('users', 'email')->ignore($user->id),
-            ],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation error',
-                'errors'  => $validator->errors()
-            ], 422);
-        }
-
-        $user->update([
-            'name'  => trim($request->input('name')),
-            'email' => strtolower(trim($request->input('email'))),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Profile updated successfully.',
-            'user' => [
-                'id'                  => $user->id,
-                'name'                => $user->name,
-                'email'               => $user->email,
-                'phone'               => $user->phone,
-                'role'                => $user->role,
-                'is_profile_complete' => true,
-            ]
-        ], 200);
-    }
-
-    /**
-     * Update device FCM push notification token
-     * POST /api/user/fcm-token
-     */
-    public function updateFcmToken(Request $request)
-    {
-        $request->validate([
-            'fcm_token' => 'required|string',
-        ]);
-
-        $user = $request->user();
-        $user->update(['device_token' => $request->input('fcm_token')]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'FCM token updated successfully.'
-        ], 200);
-    }
+  return res.json({
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      email_verified: !!user.email_verified,
+      role: user.role,
+    },
+    providers,
+    ...st,
+  });
 }
-```
 
----
-
-## 5. Mobile App API Call Contracts
-
-### Request Payload (`POST https://daydoenterprises.us/api/auth/sync`):
-```json
-{
-  "firebase_uid": "4xT9KqLpM0vZ8bXy3wR1",
-  "login_type": "phone",
-  "phone": "+923001234567",
-  "device_token": "fcm_token_sample_here"
-}
-```
-
-### Response Payload (New User without Name/Email):
-```json
-{
-  "success": true,
-  "message": "Authentication synchronized successfully.",
-  "token": "15|v7R2a9XkLtQpMzW...",
-  "user": {
-    "id": 84,
-    "firebase_uid": "4xT9KqLpM0vZ8bXy3wR1",
-    "name": null,
-    "email": null,
-    "phone": "+923001234567",
-    "role": "client",
-    "status": "active",
-    "is_profile_complete": false,
-    "created_at": "2026-10-19T12:00:00.000000Z"
+function dbError(e, res) {
+  if (e.code === 'ER_DUP_ENTRY') {
+    const code = String(e.sqlMessage).includes('phone') ? 'PHONE_EXISTS' : 'EMAIL_EXISTS';
+    return res.status(409).json({ code });
   }
+  console.error('[Database Error]', e);
+  return res.status(500).json({ code: 'SERVER_ERROR' });
 }
-```
-*When `is_profile_complete` is `false`, `next_user` will show the **"Complete Profile"** screen to ask for Name and Email.*
 
-### Request Payload (`PUT https://daydoenterprises.us/api/user/profile`):
-```json
-{
-  "name": "Muhammad Ali",
-  "email": "m.ali@example.com"
-}
+// ---------------------------------------------------------------------------
+// 1) POST /auth/sync (Called after every login and on app boot)
+// ---------------------------------------------------------------------------
+router.post('/auth/sync', verifyToken, async (req, res) => {
+  const d = req.decoded;
+  try {
+    const existing = await repo.findByUid(d.uid);
+    if (existing) {
+      await repo.syncFromToken(d.uid, fromToken(d));
+    } else {
+      if (d.phone_number && (await repo.findByPhone(d.phone_number))) {
+        return res.status(409).json({ code: 'PHONE_EXISTS' });
+      }
+      if (d.email && d.email_verified && (await repo.findByEmail(d.email))) {
+        return res.status(409).json({ code: 'EMAIL_EXISTS' });
+      }
+      await repo.create({ uid: d.uid, name: d.name, ...fromToken(d) });
+    }
+    if (req.body.fcm_token) {
+      await repo.setFcmToken(d.uid, req.body.fcm_token);
+    }
+    return await respond(res, d.uid);
+  } catch (e) {
+    return dbError(e, res);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 2) PUT /users/me (Complete Profile submission)
+// ---------------------------------------------------------------------------
+router.put('/users/me', verifyToken, async (req, res) => {
+  const d = req.decoded;
+  const name = String(req.body.name || '').trim();
+  if (name.length < 2) return res.status(400).json({ code: 'NAME_REQUIRED' });
+
+  try {
+    if (!(await repo.findByUid(d.uid))) {
+      return res.status(404).json({ code: 'USER_NOT_FOUND' });
+    }
+    await repo.syncFromToken(d.uid, fromToken(d));
+    await repo.setName(d.uid, name);
+    return await respond(res, d.uid);
+  } catch (e) {
+    return dbError(e, res);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 3) DELETE /users/me (Account Deletion — Play Store Rule)
+// ---------------------------------------------------------------------------
+router.delete('/users/me', verifyToken, async (req, res) => {
+  const d = req.decoded;
+  // Strict check: User must have re-authenticated within the last 5 minutes (300 seconds)
+  if (Date.now() / 1000 - d.auth_time > 300) {
+    return res.status(401).json({ code: 'REAUTH_REQUIRED' });
+  }
+
+  try {
+    await repo.deleteByUid(d.uid);
+    try {
+      await admin.auth().deleteUser(d.uid);
+    } catch (e) {
+      if (e.code !== 'auth/user-not-found') throw e;
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('[Account Deletion Error]', e);
+    return res.status(500).json({ code: 'SERVER_ERROR' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4) POST /user/fcm-token (Store / Update device push notification token)
+// ---------------------------------------------------------------------------
+router.post('/user/fcm-token', verifyToken, async (req, res) => {
+  const d = req.decoded;
+  const fcmToken = String(req.body.fcm_token || '').trim();
+  if (!fcmToken) return res.status(400).json({ code: 'FCM_TOKEN_REQUIRED' });
+
+  try {
+    await repo.setFcmToken(d.uid, fcmToken);
+    return res.json({ ok: true });
+  } catch (e) {
+    return dbError(e, res);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 5) DELETE /user/fcm-token (Called on Sign Out to revoke push alerts)
+// ---------------------------------------------------------------------------
+router.delete('/user/fcm-token', verifyToken, async (req, res) => {
+  const d = req.decoded;
+  try {
+    await repo.setFcmToken(d.uid, null);
+    return res.json({ ok: true });
+  } catch (e) {
+    return dbError(e, res);
+  }
+});
+
+module.exports = router;
+```
+
+#### Mounting in `server.js`:
+```javascript
+const express = require('express');
+const app = express();
+
+app.use(express.json());
+app.use(require('./auth.routes'));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Auth Server running on port ${PORT}`));
 ```
 
 ---
 
-## 6. Summary for Backend Developer
+### B6. Backend HTTP Responses Reference Table
 
-1. Run the migration to add `firebase_uid`, `login_type`, `phone`, `phone_verified`, and `last_login_at` to the `users` table.
-2. Ensure `role = 'client'` is used for all customers registering through `next_user` (to prevent conflicts with `surveyor` and `driver` roles from `next_gen`).
-3. Add the two controllers (`ClientAuthController` and `UserProfileController`) and the routes in `routes/api.php`.
-4. Return standard Laravel Sanctum tokens and JSON formats.
+| Case | HTTP Status | Response Body |
+| :--- | :--- | :--- |
+| Missing or invalid Authorization header | `401 Unauthorized` | `{ "code": "NO_TOKEN" }` or `{ "code": "BAD_TOKEN" }` |
+| New user, phone already belongs to another user in DB | `409 Conflict` | `{ "code": "PHONE_EXISTS" }` |
+| New user, verified email already belongs to another user | `409 Conflict` | `{ "code": "EMAIL_EXISTS" }` |
+| Name shorter than 2 characters on PUT `/users/me` | `400 Bad Request` | `{ "code": "NAME_REQUIRED" }` |
+| Missing token on POST `/user/fcm-token` | `400 Bad Request` | `{ "code": "FCM_TOKEN_REQUIRED" }` |
+| DELETE `/users/me` with login older than 5 minutes | `401 Unauthorized` | `{ "code": "REAUTH_REQUIRED" }` |
+| Successful sync, profile update, or FCM update | `200 OK` | `{ "user": {...}, "providers": [...], "missing": [...], "is_profile_complete": bool }` or `{ "ok": true }` |
+
+---
+
+### B7. Verification with cURL
+Print your ID token in debug mode from Flutter, then test your endpoint:
+```bash
+curl -X POST http://localhost:3000/auth/sync \
+  -H "Authorization: Bearer YOUR_FIREBASE_ID_TOKEN"
+```
+
+---
+
+## Part C — Flutter Client Architecture
+
+The Flutter client contains dedicated, modular services designed to match this architecture:
+
+### 1. `lib/services/api_client.dart`
+* Manages all HTTP traffic via `Dio`.
+* Implements `_AuthInterceptor` that automatically injects `Authorization: Bearer <id_token>`.
+* On any `401 Unauthorized`, automatically requests `await user.getIdToken(true)` and replays the original failed request once.
+
+### 2. `lib/services/auth_service.dart`
+* **Email:** `signInWithEmail`, `signUpWithEmail`, `sendPasswordReset`, `sendEmailVerification`.
+* **Phone OTP:** `verifyPhone({linking: false/true, onCodeSent, onAutoDone, onError})`, `verifyOtpAndSignIn`, `linkPhone`.
+* **Google OAuth:** `signInWithGoogle()`, catching `account-exists-with-different-credential`, storing `pendingCredential`, and calling `linkPendingIfAny()`.
+* **Credential Linking:** `linkEmailPassword` (for phone users), `linkPhone` (for email/social users).
+* **Re-authentication:** `reauthWithPassword`, `reauthWithGoogle`, `reauthWithPhone` for safe account deletion.
+
+### 3. `lib/services/auth_errors.dart`
+* `readableError(Object e)` centralized error translation mapping Firebase codes and Backend codes (`PHONE_EXISTS`, `EMAIL_EXISTS`, `NAME_REQUIRED`, `REAUTH_REQUIRED`) to helpful client messages.
+
+### 4. `lib/services/backend_sync_service.dart`
+* Calls `POST /auth/sync` on app startup and post-login.
+* Inspects `is_profile_complete` and `missing[]`.
+* If incomplete, redirects client to `CompleteProfileView`.
+
+---
+
+## Summary of Checklist for Deployment
+- [x] Android `enableOnBackInvokedCallback="true"` verified in `AndroidManifest.xml`
+- [x] SHA-1 & SHA-256 added to Firebase Console
+- [x] `google-services.json` placed in `android/app/`
+- [x] Pakistan (+92) and UK (+44) enabled in SMS Region Policy
+- [x] MySQL schema deployed on backend
+- [x] Node.js service running with `firebase-admin` service account credentials
+- [x] Flutter app using `ApiClient`, `AuthService`, and `readableError`

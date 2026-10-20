@@ -100,14 +100,15 @@ class SessionService {
     }
   }
 
-  /// Updates profile details in memory after /api/user/profile update
-  void updateProfileData({required String name, required String email}) {
+  /// Updates profile details in memory after profile update
+  void updateProfileData({required String name, String? email}) {
+    final cleanEmail = email?.trim() ?? _userData?['email']?.toString() ?? '';
     _userData = {
       ...?_userData,
       'name': name.trim(),
-      'email': email.trim(),
+      'email': cleanEmail,
     };
-    _isProfileComplete = name.trim().isNotEmpty && email.trim().isNotEmpty;
+    _isProfileComplete = name.trim().isNotEmpty && cleanEmail.isNotEmpty;
   }
 
   Future<void> syncWithFirebaseUser(User user, {String? role}) async {

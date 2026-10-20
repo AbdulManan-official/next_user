@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../services/auth_errors.dart';
+import '../../services/auth_routing_helper.dart';
 import '../../services/auth_service.dart';
-import '../../services/backend_sync_service.dart';
 import '../../services/session_service.dart';
 import '../../utils/app_theme_styles.dart';
-import '../../views/bottom_tab_view.dart';
 import '../../widgets/animation_helper.dart';
 import '../../widgets/app_snack_bar.dart';
 import '../../widgets/custom_button.dart';
@@ -17,7 +17,6 @@ import '../widgets/auth_tab_switch.dart';
 import '../widgets/otp_verification_view.dart';
 import '../widgets/phone_input_field.dart';
 import '../widgets/social_auth_buttons.dart';
-import 'complete_profile_view.dart';
 import 'forgot_password_view.dart';
 import 'signup_view.dart';
 
@@ -67,10 +66,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
 
   Future<void> _checkExistingSession() async {
     if (SessionService.instance.isAuthenticated && mounted) {
-      Navigator.pushReplacement(
-        context,
-        AnimationHelper.smoothRoute(page: const BottomTabView()),
-      );
+      await routeAfterAuth(context);
     }
   }
 
@@ -95,14 +91,6 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
     String? name,
     String? email,
   }) async {
-    final syncResult = await BackendSyncService.instance.syncUserWithBackend(
-      loginType: loginType,
-      login: login,
-      firebaseUid: user.uid,
-      name: name ?? user.displayName,
-      email: email ?? user.email,
-    );
-
     if (!mounted) return;
     setState(() => _isLoading = false);
 
@@ -115,18 +103,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
       'Welcome back, $displayName!',
     );
 
-    final isComplete = syncResult['is_profile_complete'] == true;
-    if (!isComplete) {
-      Navigator.pushReplacement(
-        context,
-        AnimationHelper.smoothRoute(page: const CompleteProfileView()),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        AnimationHelper.smoothRoute(page: const BottomTabView()),
-      );
-    }
+    await routeAfterAuth(context);
   }
 
   void _handleSignIn() async {
@@ -166,7 +143,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }
@@ -219,7 +196,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
           if (!mounted) return;
           setState(() => _isLoading = false);
           HapticFeedback.heavyImpact();
-          final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+          final errorMsg = readableError(e);
           AppSnackBar.showError(context, errorMsg);
         },
         onVerificationCompleted: (PhoneAuthCredential credential) async {
@@ -246,7 +223,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }
@@ -296,7 +273,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }
@@ -340,7 +317,7 @@ class _LoginViewState extends State<LoginView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }

@@ -19,6 +19,9 @@ class AppUrls {
   /// GET /api/user/profile & PUT /api/user/profile
   static String get userProfile => '$baseUrl/user/profile';
 
+  /// PUT /api/users/me & DELETE /api/users/me
+  static String get usersMe => '$baseUrl/users/me';
+
   /// POST /api/user/fcm-token
   static String get fcmToken => '$baseUrl/user/fcm-token';
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../services/auth_errors.dart';
 import '../../services/auth_service.dart';
 import '../../utils/app_theme_styles.dart';
 import '../../widgets/animation_helper.dart';
@@ -70,7 +71,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }
@@ -95,7 +96,7 @@ class _ForgotPasswordViewState extends State<ForgotPasswordView> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       HapticFeedback.heavyImpact();
-      final errorMsg = AuthService.instance.getReadableErrorMessage(e);
+      final errorMsg = readableError(e);
       AppSnackBar.showError(context, errorMsg);
     }
   }

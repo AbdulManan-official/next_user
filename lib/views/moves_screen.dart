@@ -103,7 +103,7 @@ class _MovesScreenState extends State<MovesScreen> {
                   r.pagePadding,
                   context.h(12),
                   r.pagePadding,
-                  context.h(120),
+                  context.h(16),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

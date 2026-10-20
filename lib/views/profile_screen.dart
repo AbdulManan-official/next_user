@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_errors.dart';
 import '../services/auth_service.dart';
+import '../services/backend_sync_service.dart';
 import '../services/session_service.dart';
 import '../utils/app_theme_styles.dart';
 import '../utils/responsive_helper.dart';
@@ -70,9 +73,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     HapticFeedback.lightImpact();
     final nameCtrl = TextEditingController(text: _userName);
     final emailCtrl = TextEditingController(text: _userEmail);
-    final cleanPhone = _userPhone.replaceFirst(RegExp(r'^\+(44|92)\s*'), '');
-    final phoneCtrl = TextEditingController(text: cleanPhone);
-    String selectedDial = _userPhone.startsWith('+92') ? '+92' : '+44';
 
     showModalBottomSheet(
       context: context,
@@ -115,7 +115,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       'Personal Information',
                       style: AppTextStyles.titleLarge.copyWith(
-                         fontSize: context.sp(18),
+                        fontSize: context.sp(18),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -127,55 +127,453 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
                 SizedBox(height: context.h(16)),
+
+                // FULL NAME
                 CustomTextField(
                   label: 'FULL NAME',
                   controller: nameCtrl,
                   prefixIcon: Icons.person_outline_rounded,
                 ),
                 SizedBox(height: context.h(14)),
-                CustomTextField(
-                  label: 'EMAIL ADDRESS',
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  prefixIcon: Icons.email_outlined,
-                ),
+
+                // EMAIL ADDRESS (Read-only if set; linking option if missing)
+                if (_userEmail.isNotEmpty) ...[
+                  CustomTextField(
+                    label: 'EMAIL ADDRESS',
+                    controller: emailCtrl,
+                    readOnly: true,
+                    prefixIcon: Icons.email_outlined,
+                    suffixIcon: const Icon(
+                      Icons.lock_outline_rounded,
+                      color: AppColors.gold,
+                      size: 18,
+                    ),
+                  ),
+                  SizedBox(height: context.h(4)),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: context.w(4)),
+                    child: Text(
+                      'Email cannot be changed once set.',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: EdgeInsets.all(context.r(14)),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(context.r(12)),
+                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.mail_outline_rounded, color: AppColors.gold, size: 20),
+                        SizedBox(width: context.w(12)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'No Email Linked',
+                                style: AppTextStyles.labelMedium.copyWith(
+                                  color: AppColors.gold,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                'Link an email and password to secure email login.',
+                                style: AppTextStyles.bodySmall.copyWith(
+                                  color: AppColors.textMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _showLinkEmailSheet();
+                          },
+                          child: const Text('Link', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 SizedBox(height: context.h(14)),
-                PhoneInputField(
-                  label: 'CONTACT NUMBER',
-                  controller: phoneCtrl,
-                  initialCountry: selectedDial == '+92'
-                      ? supportedCountries[1]
-                      : supportedCountries[0],
-                  onCountryChanged: (c) => selectedDial = c.dialCode,
-                ),
+
+                // PHONE NUMBER (Verified pill or Link Phone flow)
+                if (_userPhone.isNotEmpty) ...[
+                  CustomTextField(
+                    label: 'VERIFIED CONTACT NUMBER',
+                    controller: TextEditingController(text: _userPhone),
+                    readOnly: true,
+                    prefixIcon: Icons.phone_outlined,
+                    suffixIcon: const Icon(
+                      Icons.check_circle_outline_rounded,
+                      color: AppColors.gold,
+                      size: 18,
+                    ),
+                  ),
+                ] else ...[
+                  Container(
+                    padding: EdgeInsets.all(context.r(14)),
+                    decoration: BoxDecoration(
+                      color: AppColors.gold.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(context.r(12)),
+                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.phone_outlined, color: AppColors.gold, size: 20),
+                        SizedBox(width: context.w(12)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'No Phone Linked',
+                                style: AppTextStyles.labelMedium.copyWith(
+                                  color: AppColors.gold,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                'Link your mobile number for SMS OTP login.',
+                                style: AppTextStyles.bodySmall.copyWith(
+                                  color: AppColors.textMuted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            _showLinkPhoneSheet();
+                          },
+                          child: const Text('Link', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 SizedBox(height: context.h(22)),
+
                 CustomButton(
                   text: 'Save Changes',
                   height: context.h(48),
-                  onPressed: () {
+                  onPressed: () async {
                     HapticFeedback.mediumImpact();
-                    final rawPhone = phoneCtrl.text.trim();
-                    setState(() {
-                      _userName = nameCtrl.text.trim();
-                      _userEmail = emailCtrl.text.trim();
-                      if (rawPhone.isEmpty) {
-                        _userPhone = '';
-                      } else if (rawPhone.startsWith('+')) {
-                        _userPhone = rawPhone;
-                      } else {
-                        _userPhone = '$selectedDial $rawPhone';
+                    final newName = nameCtrl.text.trim();
+                    if (newName.length < 2) {
+                      AppSnackBar.showError(context, 'Name must be at least 2 characters.');
+                      return;
+                    }
+                    try {
+                      await BackendSyncService.instance.updateProfile(name: newName);
+                      await FirebaseAuth.instance.currentUser?.updateDisplayName(newName);
+                      setState(() => _userName = newName);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        AppSnackBar.showSuccess(
+                          context,
+                          'Profile name updated successfully.',
+                        );
                       }
-                    });
-                    Navigator.pop(ctx);
-                    AppSnackBar.showSuccess(
-                      context,
-                      'Profile details updated successfully.',
-                    );
+                    } catch (e) {
+                      final msg = readableError(e);
+                      if (mounted) AppSnackBar.showError(context, msg);
+                    }
                   },
                 ),
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  /// Sheet to link Phone via verifyPhone(linking: true) and linkPhone
+  void _showLinkPhoneSheet() {
+    final phoneCtrl = TextEditingController();
+    final otpCtrl = TextEditingController();
+    String selectedDial = '+44';
+    String? verificationId;
+    int? resendToken;
+    bool isOtpStep = false;
+    bool isLoading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (sheetInnerCtx, setSheetState) {
+            String formatPhone() {
+              final raw = phoneCtrl.text.trim();
+              final digits = raw.replaceAll(RegExp(r'\D'), '');
+              if (raw.startsWith('+')) return '+$digits';
+              if (digits.startsWith('0')) return '$selectedDial${digits.substring(1)}';
+              return '$selectedDial$digits';
+            }
+
+            return Container(
+              padding: EdgeInsets.fromLTRB(
+                context.w(22),
+                context.h(20),
+                context.w(22),
+                MediaQuery.of(context).viewInsets.bottom + context.h(24),
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(context.r(28))),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: context.w(38),
+                        height: context.h(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.textMuted.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(context.r(2)),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: context.h(16)),
+                    Text(
+                      'Link Mobile Number',
+                      style: AppTextStyles.titleLarge.copyWith(
+                        fontSize: context.sp(18),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: context.h(16)),
+                    if (!isOtpStep) ...[
+                      PhoneInputField(
+                        label: 'CONTACT NUMBER',
+                        controller: phoneCtrl,
+                        initialCountry: supportedCountries[0],
+                        onCountryChanged: (c) => selectedDial = c.dialCode,
+                      ),
+                      SizedBox(height: context.h(20)),
+                      CustomButton(
+                        text: 'Send Verification Code',
+                        isLoading: isLoading,
+                        height: context.h(48),
+                        onPressed: () async {
+                          final full = formatPhone();
+                          if (full.length < 9) {
+                            AppSnackBar.showError(context, 'Enter a valid mobile number.');
+                            return;
+                          }
+                          setSheetState(() => isLoading = true);
+                          try {
+                            await AuthService.instance.verifyPhone(
+                              phoneNumber: full,
+                              linking: true, // NEVER signInWithCredential!
+                              resendToken: resendToken,
+                              onCodeSent: (id, token) {
+                                setSheetState(() {
+                                  verificationId = id;
+                                  resendToken = token;
+                                  isOtpStep = true;
+                                  isLoading = false;
+                                });
+                                if (mounted) AppSnackBar.showSuccess(context, 'SMS code sent to $full');
+                              },
+                              onAutoDone: () async {
+                                // Auto verified
+                                await FirebaseAuth.instance.currentUser?.getIdToken(true);
+                                await BackendSyncService.instance.syncUserWithBackend();
+                                if (mounted) setState(() => _userPhone = full);
+                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                                if (mounted) AppSnackBar.showSuccess(context, 'Phone linked successfully.');
+                              },
+                              onError: (e) {
+                                setSheetState(() => isLoading = false);
+                                if (mounted) AppSnackBar.showError(context, readableError(e));
+                              },
+                            );
+                          } catch (e) {
+                            setSheetState(() => isLoading = false);
+                            if (mounted) AppSnackBar.showError(context, readableError(e));
+                          }
+                        },
+                      ),
+                    ] else ...[
+                      CustomTextField(
+                        label: '6-DIGIT SMS CODE',
+                        controller: otpCtrl,
+                        keyboardType: TextInputType.number,
+                        prefixIcon: Icons.lock_clock_outlined,
+                      ),
+                      SizedBox(height: context.h(20)),
+                      CustomButton(
+                        text: 'Verify & Link',
+                        isLoading: isLoading,
+                        height: context.h(48),
+                        onPressed: () async {
+                          final code = otpCtrl.text.trim();
+                          if (code.length != 6 || verificationId == null) {
+                            if (mounted) AppSnackBar.showError(context, 'Enter the valid 6-digit code.');
+                            return;
+                          }
+                          setSheetState(() => isLoading = true);
+                          try {
+                            await AuthService.instance.linkPhone(verificationId!, code);
+                            await FirebaseAuth.instance.currentUser?.getIdToken(true);
+                            await BackendSyncService.instance.syncUserWithBackend();
+                            if (mounted) setState(() => _userPhone = formatPhone());
+                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                            if (mounted) AppSnackBar.showSuccess(context, 'Phone linked successfully.');
+                          } catch (e) {
+                            setSheetState(() => isLoading = false);
+                            if (mounted) AppSnackBar.showError(context, readableError(e));
+                          }
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Sheet to link Email + Password via linkEmailPassword
+  void _showLinkEmailSheet() {
+    final emailCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool isLoading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (sheetInnerCtx, setSheetState) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(
+                context.w(22),
+                context.h(20),
+                context.w(22),
+                MediaQuery.of(context).viewInsets.bottom + context.h(24),
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(context.r(28))),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: context.w(38),
+                        height: context.h(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.textMuted.withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(context.r(2)),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: context.h(16)),
+                    Text(
+                      'Link Email & Password',
+                      style: AppTextStyles.titleLarge.copyWith(
+                        fontSize: context.sp(18),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: context.h(16)),
+                    CustomTextField(
+                      label: 'EMAIL ADDRESS',
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      prefixIcon: Icons.email_outlined,
+                    ),
+                    SizedBox(height: context.h(12)),
+                    CustomTextField(
+                      label: 'CREATE PASSWORD',
+                      controller: passCtrl,
+                      obscureText: true,
+                      prefixIcon: Icons.lock_outline_rounded,
+                    ),
+                    SizedBox(height: context.h(12)),
+                    CustomTextField(
+                      label: 'CONFIRM PASSWORD',
+                      controller: confirmCtrl,
+                      obscureText: true,
+                      prefixIcon: Icons.shield_outlined,
+                    ),
+                    SizedBox(height: context.h(20)),
+                    CustomButton(
+                      text: 'Link Email',
+                      isLoading: isLoading,
+                      height: context.h(48),
+                      onPressed: () async {
+                        final email = emailCtrl.text.trim().toLowerCase();
+                        final pass = passCtrl.text;
+                        final confirm = confirmCtrl.text;
+
+                        if (email.isEmpty || !email.contains('@')) {
+                          AppSnackBar.showError(context, 'Enter a valid email address.');
+                          return;
+                        }
+                        if (pass.length < 8) {
+                          AppSnackBar.showError(context, 'Password must be at least 8 characters.');
+                          return;
+                        }
+                        if (pass != confirm) {
+                          AppSnackBar.showError(context, 'Passwords do not match.');
+                          return;
+                        }
+
+                        setSheetState(() => isLoading = true);
+                        try {
+                          await AuthService.instance.linkEmailPassword(email, pass);
+                          await FirebaseAuth.instance.currentUser?.getIdToken(true);
+                          await BackendSyncService.instance.updateProfile(name: _userName, email: email);
+                          await BackendSyncService.instance.syncUserWithBackend();
+                          if (mounted) setState(() => _userEmail = email);
+                          if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                          if (mounted) {
+                            AppSnackBar.showSuccess(
+                              context,
+                              'Email linked successfully. Verification link sent to inbox.',
+                            );
+                          }
+                        } catch (e) {
+                          setSheetState(() => isLoading = false);
+                          if (mounted) AppSnackBar.showError(context, readableError(e));
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -625,7 +1023,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             r.pagePadding,
             context.h(14),
             r.pagePadding,
-            context.h(110),
+            context.h(16),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

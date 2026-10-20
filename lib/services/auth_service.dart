@@ -1,173 +1,207 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'auth_errors.dart';
+import 'api_client.dart';
+import 'notification_service.dart';
 import 'session_service.dart';
+import '../utils/app_urls.dart';
 
-/// Production-ready Firebase Authentication Service handling Email/Password,
-/// Phone SMS OTP, Google Sign-In, Apple Sign-In, and Password Reset.
+/// Single source of truth Authentication Service for Next User.
+/// Implements complete multi-provider authentication (Email/Password, Phone SMS OTP, Google OAuth),
+/// seamless credential linking, token re-issuance (getIdToken(true)), and re-authentication.
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // google_sign_in v7 uses GoogleSignIn.instance (singleton)
-  final SessionService _session = SessionService.instance;
 
-  /// Stream of user authentication state changes
+  // Saved when Google says: account-exists-with-different-credential
+  AuthCredential? pendingCredential;
+  String? pendingEmail;
+
+  User? get currentUser => _auth.currentUser;
+  bool get isLoggedIn => _auth.currentUser != null;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  /// Currently logged in Firebase User
-  User? get currentUser => _auth.currentUser;
-
-  /// Whether a user is currently signed in
-  bool get isLoggedIn => _auth.currentUser != null;
+  List<String> get providerIds =>
+      currentUser?.providerData.map((p) => p.providerId).toList() ?? [];
 
   // ---------------------------------------------------------------------------
   // 1. Email & Password Authentication
   // ---------------------------------------------------------------------------
 
   /// Sign in with Email and Password
+  Future<UserCredential> signInWithEmail(String email, String password) async {
+    final c = await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    await linkPendingIfAny();
+    return c;
+  }
+
+  /// Create a new account with Email and Password
+  Future<UserCredential> signUpWithEmail(String email, String password) async {
+    final c = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    await c.user?.sendEmailVerification();
+    return c;
+  }
+
+  /// Send official Firebase password reset email
+  Future<void> sendPasswordReset(String email) =>
+      _auth.sendPasswordResetEmail(email: email.trim());
+
+  /// Send verification email to currently signed in user
+  Future<void> sendEmailVerification() async {
+    await currentUser?.sendEmailVerification();
+  }
+
+  // Backward compatibility alias for older calls
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
     required String password,
-  }) async {
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
+  }) => signInWithEmail(email, password);
 
-      if (credential.user != null) {
-        await _session.syncWithFirebaseUser(credential.user!);
-      }
-
-      return credential;
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] signInWithEmailAndPassword error: $e');
-      rethrow;
-    }
-  }
-
-  /// Backward compatible alias for signInWithEmailAndPassword
-  Future<bool> login({
-    required String emailOrPhone,
-    required String password,
-  }) async {
-    final cred = await signInWithEmailAndPassword(
-      email: emailOrPhone,
-      password: password,
-    );
-    return cred.user != null;
-  }
-
-  /// Backward compatible alias for signOut
-  Future<void> logout() => signOut();
-
-  /// Create a new account with Name, Email, and Password
   Future<UserCredential> signUpWithEmailAndPassword({
     required String name,
     required String email,
     required String password,
   }) async {
-    try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      // Update Firebase User Profile display name
-      final user = credential.user;
-      if (user != null) {
-        await user.updateDisplayName(name.trim());
-        await user.reload();
-        final refreshedUser = _auth.currentUser ?? user;
-        await _session.syncWithFirebaseUser(refreshedUser);
-      }
-
-      return credential;
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] signUpWithEmailAndPassword error: $e');
-      rethrow;
+    final cred = await signUpWithEmail(email, password);
+    if (name.trim().isNotEmpty && cred.user != null) {
+      await cred.user!.updateDisplayName(name.trim());
+      await cred.user!.reload();
     }
+    return cred;
   }
+
+  Future<void> sendPasswordResetEmail({required String email}) =>
+      sendPasswordReset(email);
 
   // ---------------------------------------------------------------------------
   // 2. Phone Authentication & SMS OTP
   // ---------------------------------------------------------------------------
 
-  /// Sends 6-digit SMS OTP to given phone number via Firebase Phone Auth
-  Future<void> verifyPhoneNumber({
-    required String phoneNumber,
-    required Function(String verificationId, int? resendToken) onCodeSent,
-    required Function(FirebaseAuthException e) onVerificationFailed,
-    required Function(PhoneAuthCredential credential) onVerificationCompleted,
-    required Function(String verificationId) onCodeAutoRetrievalTimeout,
+  /// Verify phone number via SMS OTP (Simplified callback signature)
+  Future<void> verifyPhone({
+    required String phoneNumber, // E.164, for example +923001234567 or +447911123456
+    required bool linking,
     int? resendToken,
-  }) async {
-    try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber.trim(),
-        forceResendingToken: resendToken,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-retrieval / Instant verification on Android
-          try {
-            final userCred = await _auth.signInWithCredential(credential);
-            if (userCred.user != null) {
-              await _session.syncWithFirebaseUser(userCred.user!);
-            }
-          } catch (_) {}
-          onVerificationCompleted(credential);
-        },
-        verificationFailed: onVerificationFailed,
-        codeSent: onCodeSent,
-        codeAutoRetrievalTimeout: onCodeAutoRetrievalTimeout,
-        timeout: const Duration(seconds: 60),
-      );
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] verifyPhoneNumber error: $e');
-      rethrow;
-    }
+    required void Function(String verificationId, int? resendToken) onCodeSent,
+    required void Function() onAutoDone,
+    required void Function(Object error) onError,
+  }) {
+    return _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber.trim(),
+      timeout: const Duration(seconds: 60),
+      forceResendingToken: resendToken,
+      verificationCompleted: (PhoneAuthCredential cred) async {
+        try {
+          if (linking) {
+            await currentUser!.linkWithCredential(cred);
+            await currentUser!.getIdToken(true);
+          } else {
+            await _auth.signInWithCredential(cred);
+            await linkPendingIfAny();
+          }
+          onAutoDone();
+        } catch (e) {
+          onError(e);
+        }
+      },
+      verificationFailed: (FirebaseAuthException e) => onError(e),
+      codeSent: (id, token) => onCodeSent(id, token),
+      codeAutoRetrievalTimeout: (_) {},
+    );
   }
 
-  /// Verifies SMS code and signs in with PhoneAuthCredential
+  /// Full verifyPhoneNumber method matching Flutter/Firebase standard callbacks
+  Future<void> verifyPhoneNumber({
+    required String phoneNumber,
+    required void Function(String verificationId, int? resendToken) onCodeSent,
+    required void Function(FirebaseAuthException e) onVerificationFailed,
+    required void Function(PhoneAuthCredential credential) onVerificationCompleted,
+    required void Function(String verificationId) onCodeAutoRetrievalTimeout,
+    int? resendToken,
+  }) {
+    return _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber.trim(),
+      timeout: const Duration(seconds: 60),
+      forceResendingToken: resendToken,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        try {
+          await _auth.signInWithCredential(credential);
+          await linkPendingIfAny();
+        } catch (_) {}
+        onVerificationCompleted(credential);
+      },
+      verificationFailed: onVerificationFailed,
+      codeSent: onCodeSent,
+      codeAutoRetrievalTimeout: onCodeAutoRetrievalTimeout,
+    );
+  }
+
+  /// Sign in with SMS OTP verification ID and code (named parameters)
   Future<UserCredential> verifyOtpAndSignIn({
     required String verificationId,
     required String smsCode,
     String? displayName,
   }) async {
-    try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: smsCode.trim(),
-      );
-
-      final userCred = await _auth.signInWithCredential(credential);
-
-      if (userCred.user != null) {
-        if (displayName != null && displayName.trim().isNotEmpty) {
-          await userCred.user!.updateDisplayName(displayName.trim());
-          await userCred.user!.reload();
-        }
-        final refreshedUser = _auth.currentUser ?? userCred.user!;
-        await _session.syncWithFirebaseUser(refreshedUser);
-      }
-
-      return userCred;
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] verifyOtpAndSignIn error: $e');
-      rethrow;
+    final cred = PhoneAuthProvider.credential(
+      verificationId: verificationId,
+      smsCode: smsCode.trim(),
+    );
+    final r = await _auth.signInWithCredential(cred);
+    if (displayName != null && displayName.trim().isNotEmpty && r.user != null) {
+      await r.user!.updateDisplayName(displayName.trim());
+      await r.user!.reload();
     }
+    await linkPendingIfAny();
+    return r;
+  }
+
+  /// Positional variant matching guide: verifyOtp(id, code)
+  Future<UserCredential> verifyOtp(String verificationId, String code) =>
+      verifyOtpAndSignIn(verificationId: verificationId, smsCode: code);
+
+  /// Link phone credential to currently logged-in account (for users who signed up via Email or Google)
+  Future<void> linkPhone(String verificationId, String code) async {
+    final cred = PhoneAuthProvider.credential(
+      verificationId: verificationId,
+      smsCode: code.trim(),
+    );
+    await currentUser!.linkWithCredential(cred);
+    await currentUser!.getIdToken(true);
   }
 
   // ---------------------------------------------------------------------------
-  // 3. Social Authentication (Google & Apple)
+  // 3. Link Email + Password (Phone Users)
   // ---------------------------------------------------------------------------
 
-  /// Sign in using Google OAuth (google_sign_in v7 API)
+  /// Links email and password to an account that signed up via Phone OTP
+  Future<void> linkEmailPassword(String email, String password) async {
+    final user = currentUser!;
+    final cred = EmailAuthProvider.credential(
+      email: email.trim(),
+      password: password,
+    );
+    await user.linkWithCredential(cred);
+    await user.sendEmailVerification(); // linking does NOT auto-verify email
+    await user.reload();
+    await _auth.currentUser!.getIdToken(true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. Social Authentication (Google OAuth)
+  // ---------------------------------------------------------------------------
+
+  /// Sign in using Google OAuth with account linking fallback
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // v7: authenticate() returns GoogleSignInAccount directly
       final GoogleSignInAccount googleUser =
           await GoogleSignIn.instance.authenticate();
 
@@ -175,21 +209,21 @@ class AuthService {
           googleUser.authentication;
 
       final OAuthCredential credential = GoogleAuthProvider.credential(
-        // v7: accessToken not available — idToken is sufficient for Firebase
         idToken: googleAuth.idToken,
       );
 
-      final userCred = await _auth.signInWithCredential(credential);
-
-      if (userCred.user != null) {
-        await _session.syncWithFirebaseUser(userCred.user!);
+      final r = await _auth.signInWithCredential(credential);
+      await linkPendingIfAny();
+      return r;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        pendingCredential = e.credential;
+        pendingEmail = e.email;
       }
-
-      return userCred;
+      rethrow;
     } catch (e) {
-      debugPrint('⚠️ [AuthService] signInWithGoogle error: $e');
       final str = e.toString().toLowerCase();
-      // If user deliberately cancelled/dismissed dialog, return null gracefully
+      // User cancelled picker
       if (str.contains('canceled') ||
           str.contains('cancelled') ||
           str.contains('abort') ||
@@ -205,14 +239,9 @@ class AuthService {
     try {
       final appleProvider = AppleAuthProvider();
       final userCred = await _auth.signInWithProvider(appleProvider);
-
-      if (userCred.user != null) {
-        await _session.syncWithFirebaseUser(userCred.user!);
-      }
-
+      await linkPendingIfAny();
       return userCred;
     } catch (e) {
-      debugPrint('⚠️ [AuthService] signInWithApple error: $e');
       final str = e.toString().toLowerCase();
       if (str.contains('canceled') ||
           str.contains('cancelled') ||
@@ -224,106 +253,85 @@ class AuthService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // 4. Password Reset
-  // ---------------------------------------------------------------------------
-
-  /// Sends a official Firebase Password Reset link to the user's email
-  Future<void> sendPasswordResetEmail({required String email}) async {
+  /// Automatically links pending credentials after a successful second-provider login
+  Future<void> linkPendingIfAny() async {
+    final p = pendingCredential;
+    final u = currentUser;
+    if (p == null || u == null) return;
     try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] sendPasswordResetEmail error: $e');
-      rethrow;
+      await u.linkWithCredential(p);
+      await u.getIdToken(true);
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'provider-already-linked') rethrow;
+    } finally {
+      pendingCredential = null;
+      pendingEmail = null;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // 5. Sign Out
+  // 5. Re-authentication (Required before sensitive operations like account deletion)
   // ---------------------------------------------------------------------------
 
-  /// Sign out from all providers and clear local session
+  Future<void> reauthWithPassword(String password) async {
+    final u = currentUser!;
+    await u.reauthenticateWithCredential(
+      EmailAuthProvider.credential(email: u.email!, password: password),
+    );
+    await u.getIdToken(true);
+  }
+
+  Future<void> reauthWithGoogle() async {
+    final GoogleSignInAccount googleUser =
+        await GoogleSignIn.instance.authenticate();
+    final GoogleSignInAuthentication googleAuth =
+        googleUser.authentication;
+    await currentUser!.reauthenticateWithCredential(
+      GoogleAuthProvider.credential(idToken: googleAuth.idToken),
+    );
+    await currentUser!.getIdToken(true);
+  }
+
+  Future<void> reauthWithPhone(String verificationId, String code) async {
+    await currentUser!.reauthenticateWithCredential(
+      PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: code.trim(),
+      ),
+    );
+    await currentUser!.getIdToken(true);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. Sign Out
+  // ---------------------------------------------------------------------------
+
+  /// Sign out from all providers, clear FCM push token on backend & device, and clear local session
   Future<void> signOut() async {
+    pendingCredential = null;
+    pendingEmail = null;
+
+    // 1. Clear FCM token on the backend so logged-out device does not receive push alerts
     try {
-      await _auth.signOut();
-      try {
-        await GoogleSignIn.instance.signOut();
-      } catch (_) {}
-      _session.clearSession();
-    } catch (e) {
-      debugPrint('⚠️ [AuthService] signOut error: $e');
-      rethrow;
-    }
+      await ApiClient.instance.delete(AppUrls.fcmToken);
+    } catch (_) {}
+
+    // 2. Unregister device push token from Firebase Cloud Messaging
+    try {
+      await NotificationService.instance.deleteToken();
+    } catch (_) {}
+
+    // 3. Sign out of Google and Firebase
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
+    await _auth.signOut();
+    SessionService.instance.clearSession();
   }
 
   // ---------------------------------------------------------------------------
-  // 6. Enterprise Human-Readable Error Message Parser
+  // 7. Error Translation Helper
   // ---------------------------------------------------------------------------
 
-  /// Converts technical FirebaseAuthException codes into friendly messages
-  String getReadableErrorMessage(dynamic error) {
-    if (error is FirebaseAuthException) {
-      switch (error.code) {
-        case 'user-not-found':
-          return 'No registered account found with this email.';
-        case 'wrong-password':
-          return 'Incorrect password. Please try again.';
-        case 'invalid-credential':
-          return 'Invalid credentials. Please verify your email and password.';
-        case 'email-already-in-use':
-          return 'This email address is already registered. Please sign in instead.';
-        case 'invalid-email':
-          return 'The email address provided is improperly formatted.';
-        case 'weak-password':
-          return 'The password is too weak. Please use at least 6 characters.';
-        case 'user-disabled':
-          return 'This user account has been disabled by security administration.';
-        case 'too-many-requests':
-          return 'Too many attempts. For security, please wait a moment and try again.';
-        case 'operation-not-allowed':
-          return 'This sign-in method is currently disabled in your Firebase console.';
-        case 'invalid-verification-code':
-          return 'Invalid 6-digit verification code. Please check SMS and try again.';
-        case 'invalid-verification-id':
-          return 'Session expired. Please request a new verification code.';
-        case 'session-expired':
-          return 'The verification session has timed out. Please request a new code.';
-        case 'invalid-phone-number':
-          return 'The phone number provided is not valid. Please enter a valid mobile number.';
-        case 'quota-exceeded':
-          return 'Daily SMS quota exceeded. Please contact support or use email sign-in.';
-        case 'network-request-failed':
-          return 'Network connectivity error. Please check your internet connection.';
-        case 'account-exists-with-different-credential':
-          return 'An account already exists with this email using a different sign-in provider.';
-        default:
-          return error.message ?? 'An error occurred during authentication (${error.code}).';
-      }
-    }
-
-    final str = error?.toString() ?? '';
-    final lower = str.toLowerCase();
-
-    if (lower.contains('10') || lower.contains('developer_error')) {
-      return 'Google Sign-In configuration error: Please make sure SHA-1 key is added in Firebase Console.';
-    }
-    if (lower.contains('12500') || lower.contains('sign_in_failed')) {
-      return 'Google Sign-In failed. Please check your Google Play Services or network.';
-    }
-    if (lower.contains('network') || lower.contains('socket') || lower.contains('7:')) {
-      return 'Network connection error. Please check your internet connection and try again.';
-    }
-    if (lower.contains('operation-not-allowed') || lower.contains('not enabled')) {
-      return 'This sign-in provider is not enabled in Firebase Console.';
-    }
-    if (lower.contains('popup_closed') || lower.contains('canceled') || lower.contains('cancelled')) {
-      return 'Sign-in was cancelled.';
-    }
-
-    if (str.startsWith('Exception: ')) {
-      return str.substring(11);
-    }
-
-    return 'Authentication failed. Please verify your details and try again.';
-  }
+  String getReadableErrorMessage(dynamic error) => readableError(error);
 }
