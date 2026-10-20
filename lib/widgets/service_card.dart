@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../utils/app_theme_styles.dart';
-import '../../utils/responsive_helper.dart';
+import '../utils/app_theme_styles.dart';
+import '../utils/responsive_helper.dart';
 import '../models/service_model.dart';
 
 /// Interactive luxury card for displaying service options.

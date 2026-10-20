@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'app_theme_styles.dart';
 
 /// App-wide theme configuration for Luxury Dark + Gold aesthetic.
@@ -10,11 +11,12 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      fontFamily: AppTextStyles.fontFamily,
       primaryColor: AppColors.gold,
       scaffoldBackgroundColor: AppColors.background,
-      
+
+      // ---------------------------------------------------------------
       // Color Scheme
+      // ---------------------------------------------------------------
       colorScheme: const ColorScheme.dark(
         primary: AppColors.gold,
         onPrimary: AppColors.textOnGold,
@@ -30,7 +32,9 @@ class AppTheme {
         outline: AppColors.border,
       ),
 
+      // ---------------------------------------------------------------
       // App Bar Theme
+      // ---------------------------------------------------------------
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.background,
         foregroundColor: AppColors.textPrimary,
@@ -45,102 +49,171 @@ class AppTheme {
         iconTheme: const IconThemeData(color: AppColors.gold),
       ),
 
-      // Card Theme
+      // ---------------------------------------------------------------
+      // Typography (GoogleFonts Plus Jakarta Sans TextTheme)
+      // ---------------------------------------------------------------
+      textTheme: GoogleFonts.plusJakartaSansTextTheme(
+        ThemeData.dark().textTheme.copyWith(
+          displayLarge: AppTextStyles.displayLarge,
+          displayMedium: AppTextStyles.displayMedium,
+          displaySmall: AppTextStyles.displaySmall,
+          headlineLarge: AppTextStyles.headlineLarge,
+          headlineMedium: AppTextStyles.headlineMedium,
+          headlineSmall: AppTextStyles.headlineSmall,
+          titleLarge: AppTextStyles.titleLarge,
+          titleMedium: AppTextStyles.titleMedium,
+          titleSmall: AppTextStyles.titleSmall,
+          bodyLarge: AppTextStyles.bodyLarge,
+          bodyMedium: AppTextStyles.bodyMedium,
+          bodySmall: AppTextStyles.bodySmall,
+          labelLarge: AppTextStyles.labelLarge,
+          labelMedium: AppTextStyles.labelMedium,
+          labelSmall: AppTextStyles.labelSmall,
+        ),
+      ),
+
+      // ---------------------------------------------------------------
+      // Cards
+      // ---------------------------------------------------------------
       cardTheme: CardThemeData(
         color: AppColors.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           side: const BorderSide(color: AppColors.border, width: 1),
         ),
       ),
 
-      // Input / TextField Theme
+      // ---------------------------------------------------------------
+      // Inputs
+      // ---------------------------------------------------------------
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: AppColors.surfaceElevated,
+        hintStyle: AppTextStyles.hint,
+        labelStyle: AppTextStyles.bodyMedium,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        hintStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.textMuted),
-        labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.border, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.border, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.gold, width: 1.5),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.gold, width: 1.4),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.error, width: 1),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.2),
         ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
-        ),
+        prefixIconColor: AppColors.textMuted,
+        suffixIconColor: AppColors.textMuted,
       ),
 
-      // Elevated Button Theme
+      // ---------------------------------------------------------------
+      // Buttons
+      // ---------------------------------------------------------------
       elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.gold,
-          foregroundColor: AppColors.textOnGold,
-          elevation: 0,
-          minimumSize: const Size(double.infinity, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        style: ButtonStyle(
+          elevation: const WidgetStatePropertyAll(0),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return AppColors.surfaceElevated;
+            }
+            return AppColors.gold;
+          }),
+          foregroundColor: const WidgetStatePropertyAll(AppColors.textOnGold),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           ),
-          textStyle: AppTextStyles.labelLarge,
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          textStyle: WidgetStatePropertyAll(AppTextStyles.button),
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) {
+              return AppColors.textOnGold.withValues(alpha: 0.1);
+            }
+            return null;
+          }),
         ),
       ),
 
-      // Outlined Button Theme
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.gold,
-          side: const BorderSide(color: AppColors.gold, width: 1.5),
-          minimumSize: const Size(double.infinity, 52),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        style: ButtonStyle(
+          foregroundColor: const WidgetStatePropertyAll(AppColors.gold),
+          side: const WidgetStatePropertyAll(
+            BorderSide(color: AppColors.border, width: 1.2),
           ),
-          textStyle: AppTextStyles.labelLarge.copyWith(color: AppColors.gold),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          textStyle: WidgetStatePropertyAll(AppTextStyles.labelLarge),
         ),
       ),
 
-      // Text Button Theme
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: AppColors.gold,
-          textStyle: AppTextStyles.titleSmall.copyWith(color: AppColors.gold),
+        style: ButtonStyle(
+          foregroundColor: const WidgetStatePropertyAll(AppColors.gold),
+          textStyle: WidgetStatePropertyAll(AppTextStyles.labelLarge),
         ),
       ),
 
+      // ---------------------------------------------------------------
+      // Checkbox / Switch
+      // ---------------------------------------------------------------
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return AppColors.gold;
+          return Colors.transparent;
+        }),
+        checkColor: const WidgetStatePropertyAll(AppColors.textOnGold),
+        side: const BorderSide(color: AppColors.border, width: 1.4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      ),
+
+      // ---------------------------------------------------------------
+      // Divider / Icon
+      // ---------------------------------------------------------------
+      dividerTheme: const DividerThemeData(
+        color: AppColors.divider,
+        thickness: 1,
+        space: 1,
+      ),
+
+      iconTheme: const IconThemeData(color: AppColors.textSecondary, size: 22),
+
+      // ---------------------------------------------------------------
       // Bottom Navigation Bar Theme
+      // ---------------------------------------------------------------
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: AppColors.surface,
         selectedItemColor: AppColors.gold,
         unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
-        elevation: 8,
+        elevation: 0,
       ),
 
-      // Dialog Theme
+      // ---------------------------------------------------------------
+      // Dialog / Bottom Sheet / SnackBar
+      // ---------------------------------------------------------------
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: AppColors.border),
+          side: const BorderSide(color: AppColors.border, width: 1),
         ),
         titleTextStyle: AppTextStyles.headlineMedium,
         contentTextStyle: AppTextStyles.bodyMedium,
       ),
 
-      // Bottom Sheet Theme
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: AppColors.surface,
         modalBackgroundColor: AppColors.surface,
@@ -149,42 +222,12 @@ class AppTheme {
         ),
       ),
 
-      // Divider Theme
-      dividerTheme: const DividerThemeData(
-        color: AppColors.divider,
-        thickness: 1,
-        space: 1,
-      ),
-
-      // Checkbox Theme
-      checkboxTheme: CheckboxThemeData(
-        fillColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return AppColors.gold;
-          }
-          return Colors.transparent;
-        }),
-        checkColor: WidgetStateProperty.all(AppColors.textOnGold),
-        side: const BorderSide(color: AppColors.border, width: 1.5),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-      ),
-
-      // Text Theme
-      textTheme: TextTheme(
-        displayLarge: AppTextStyles.displayLarge,
-        displayMedium: AppTextStyles.displayMedium,
-        headlineLarge: AppTextStyles.headlineLarge,
-        headlineMedium: AppTextStyles.headlineMedium,
-        headlineSmall: AppTextStyles.headlineSmall,
-        titleLarge: AppTextStyles.titleLarge,
-        titleMedium: AppTextStyles.titleMedium,
-        titleSmall: AppTextStyles.titleSmall,
-        bodyLarge: AppTextStyles.bodyLarge,
-        bodyMedium: AppTextStyles.bodyMedium,
-        bodySmall: AppTextStyles.bodySmall,
-        labelLarge: AppTextStyles.labelLarge,
-        labelMedium: AppTextStyles.labelMedium,
-        labelSmall: AppTextStyles.labelSmall,
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.surfaceElevated,
+        contentTextStyle:
+            AppTextStyles.bodyMedium.copyWith(color: AppColors.textPrimary),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }

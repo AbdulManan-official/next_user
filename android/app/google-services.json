@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "1060443257771",
+    "project_id": "next-gen-d9098",
+    "storage_bucket": "next-gen-d9098.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1060443257771:android:8e658b3cd2bcabde8b70ee",
+        "android_client_info": {
+          "package_name": "com.example.next_gen"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1060443257771-4n3fgvmnulnssntb3n3oj9op5vnfo8j0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDIG7kcLK7lAPf-Pe6DRAKHBMg81eErAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1060443257771-4n3fgvmnulnssntb3n3oj9op5vnfo8j0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1060443257771-avd4d83fb6iv7cl45dokdsurs4mm4som.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.nextUser"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1060443257771:android:2474e86010937efc8b70ee",
+        "android_client_info": {
+          "package_name": "com.example.next_user"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1060443257771-o0o0n340qjgoa3f92bfnd6v6rr7ufkg5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.next_user",
+            "certificate_hash": "f41a051da13565d0f0d7bc368801d8ed97b5255c"
+          }
+        },
+        {
+          "client_id": "1060443257771-4n3fgvmnulnssntb3n3oj9op5vnfo8j0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDIG7kcLK7lAPf-Pe6DRAKHBMg81eErAk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1060443257771-4n3fgvmnulnssntb3n3oj9op5vnfo8j0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1060443257771-avd4d83fb6iv7cl45dokdsurs4mm4som.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.nextUser"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

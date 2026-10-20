@@ -1,11 +1,13 @@
-import 'dart:ui';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../utils/app_theme_styles.dart';
+import 'glass_kit.dart';
 
+/// Route helpers.
 class AnimationHelper {
   AnimationHelper._();
 
-  /// Creates a smooth fade + slide route transition for screen navigation.
+  /// Smooth fade + slide route transition.
   static PageRouteBuilder<T> smoothRoute<T>({
     required Widget page,
     Duration duration = const Duration(milliseconds: 400),
@@ -15,19 +17,18 @@ class AnimationHelper {
       reverseTransitionDuration: duration,
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curveAnim = CurvedAnimation(
+        final curve = CurvedAnimation(
           parent: animation,
           curve: Curves.easeOutCubic,
           reverseCurve: Curves.easeInCubic,
         );
-
         return FadeTransition(
-          opacity: curveAnim,
+          opacity: curve,
           child: SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(0, 0.05),
+              begin: const Offset(0, -0.04),
               end: Offset.zero,
-            ).animate(curveAnim),
+            ).animate(curve),
             child: child,
           ),
         );
@@ -36,7 +37,9 @@ class AnimationHelper {
   }
 }
 
-/// Reusable widget that smoothly fades, slides, and scales content into view on load.
+/// Fade + slide + scale into view on first build.
+/// Timer (cancelled in dispose) replaces Future.delayed.
+/// Respects the OS "remove animations" setting.
 class SmoothEntranceAnimation extends StatefulWidget {
   final Widget child;
   final Duration duration;
@@ -48,10 +51,10 @@ class SmoothEntranceAnimation extends StatefulWidget {
   const SmoothEntranceAnimation({
     super.key,
     required this.child,
-    this.duration = const Duration(milliseconds: 850),
+    this.duration = const Duration(milliseconds: 700),
     this.delay = Duration.zero,
-    this.offset = const Offset(0, 0.08),
-    this.scaleBegin = 0.94,
+    this.offset = const Offset(0, -0.06),
+    this.scaleBegin = 0.96,
     this.curve = Curves.easeOutCubic,
   });
 
@@ -62,63 +65,68 @@ class SmoothEntranceAnimation extends StatefulWidget {
 
 class _SmoothEntranceAnimationState extends State<SmoothEntranceAnimation>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
-  late final Animation<double> _fadeAnim;
-  late final Animation<Offset> _slideAnim;
-  late final Animation<double> _scaleAnim;
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+  late final Animation<double> _scale;
+  Timer? _timer;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+    final curved = CurvedAnimation(parent: _controller, curve: widget.curve);
+    _fade = Tween<double>(begin: 0, end: 1).animate(curved);
+    _slide = Tween<Offset>(begin: widget.offset, end: Offset.zero)
+        .animate(curved);
+    _scale = Tween<double>(begin: widget.scaleBegin, end: 1).animate(curved);
+  }
 
-    _animController = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
 
-    final curvedAnim = CurvedAnimation(
-      parent: _animController,
-      curve: widget.curve,
-    );
-
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(curvedAnim);
-    _slideAnim = Tween<Offset>(
-      begin: widget.offset,
-      end: Offset.zero,
-    ).animate(curvedAnim);
-    _scaleAnim = Tween<double>(
-      begin: widget.scaleBegin,
-      end: 1.0,
-    ).animate(curvedAnim);
-
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1; // show instantly
+      return;
+    }
     if (widget.delay == Duration.zero) {
-      _animController.forward();
+      _controller.forward();
     } else {
-      Future.delayed(widget.delay, () {
-        if (mounted) _animController.forward();
+      _timer = Timer(widget.delay, () {
+        if (mounted) _controller.forward();
       });
     }
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _timer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: _fadeAnim,
+      opacity: _fade,
       child: SlideTransition(
-        position: _slideAnim,
-        child: ScaleTransition(scale: _scaleAnim, child: widget.child),
+        position: _slide,
+        child: ScaleTransition(
+          scale: _scale,
+          child: RepaintBoundary(child: widget.child),
+        ),
       ),
     );
   }
 }
 
-/// Apple-styled Glassmorphism Container with BackdropFilter blur.
+/// Glass container. Same API, now built on GlassCard (one glass look
+/// everywhere: gradient fill, specular edge, top highlight).
+/// surfaceColor -> underlay, borderColor -> edge tint.
 class AppleGlassContainer extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -141,43 +149,21 @@ class AppleGlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveSurface =
-        surfaceColor ?? AppColors.surfaceElevated.withValues(alpha: 0.65);
-    final border = customBorderRadius ?? BorderRadius.circular(borderRadius);
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: border,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.45),
-            blurRadius: 32,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: border,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              color: effectiveSurface,
-              borderRadius: border,
-              border: borderColor != null
-                  ? Border.all(color: borderColor!, width: 1.2)
-                  : Border.all(color: AppColors.border.withValues(alpha: 0.8), width: 1),
-            ),
-            child: child,
-          ),
-        ),
-      ),
+    return GlassCard(
+      padding: padding,
+      radius: borderRadius,
+      borderRadius: customBorderRadius?.resolve(Directionality.of(context)),
+      blur: blurSigma,
+      underlay: surfaceColor,
+      edgeTint: borderColor ?? AppColors.gold,
+      child: child,
     );
   }
 }
 
-/// Background Ambient Glowing Orbs illuminating behind glass panels.
+/// Ambient backdrop. Same API, now uses GlassAmbientBackground
+/// (radial orbs + vignette). Old version used 100-blur BoxShadows,
+/// very expensive to rasterize.
 class AmbientBackgroundOrbs extends StatelessWidget {
   final Widget? child;
 
@@ -186,54 +172,16 @@ class AmbientBackgroundOrbs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
+      fit: StackFit.expand,
       children: [
-        // Top-Right Glowing Aura Orb
-        Positioned(
-          top: -60,
-          right: -60,
-          child: Container(
-            width: 240,
-            height: 240,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.gold.withValues(alpha: 0.16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.gold.withValues(alpha: 0.20),
-                  blurRadius: 100,
-                  spreadRadius: 60,
-                ),
-              ],
-            ),
-          ),
-        ),
-        // Bottom-Left Glowing Aura Orb
-        Positioned(
-          bottom: -80,
-          left: -80,
-          child: Container(
-            width: 280,
-            height: 280,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.goldDark.withValues(alpha: 0.14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.goldDark.withValues(alpha: 0.18),
-                  blurRadius: 120,
-                  spreadRadius: 80,
-                ),
-              ],
-            ),
-          ),
-        ),
+        const Positioned.fill(child: GlassAmbientBackground()),
         ?child,
       ],
     );
   }
 }
 
-/// Animated widget for staggered appearance of individual form elements.
+/// Staggered appearance for form elements / grid items.
 class StaggeredItemAnimation extends StatefulWidget {
   final int index;
   final Widget child;
@@ -246,10 +194,10 @@ class StaggeredItemAnimation extends StatefulWidget {
     super.key,
     required this.index,
     required this.child,
-    this.baseDelay = const Duration(milliseconds: 150),
-    this.stepDelay = const Duration(milliseconds: 70),
-    this.duration = const Duration(milliseconds: 600),
-    this.offset = const Offset(0, 0.15),
+    this.baseDelay = const Duration(milliseconds: 60),
+    this.stepDelay = const Duration(milliseconds: 55),
+    this.duration = const Duration(milliseconds: 520),
+    this.offset = const Offset(0, -0.16),
   });
 
   @override
@@ -258,64 +206,77 @@ class StaggeredItemAnimation extends StatefulWidget {
 
 class _StaggeredItemAnimationState extends State<StaggeredItemAnimation>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _animController;
-  late final Animation<double> _fadeAnim;
-  late final Animation<Offset> _slideAnim;
+  static const Duration _maxDelay = Duration(milliseconds: 700);
+
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+  Timer? _timer;
+  bool _started = false;
 
   @override
   void initState() {
     super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+    final curved =
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _fade = Tween<double>(begin: 0, end: 1).animate(curved);
+    _slide = Tween<Offset>(begin: widget.offset, end: Offset.zero)
+        .animate(curved);
+  }
 
-    _animController = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
 
-    final curvedAnim = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOutCubic,
-    );
-
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(curvedAnim);
-    _slideAnim = Tween<Offset>(
-      begin: widget.offset,
-      end: Offset.zero,
-    ).animate(curvedAnim);
-
-    final totalDelay = widget.baseDelay + (widget.stepDelay * widget.index);
-    Future.delayed(totalDelay, () {
-      if (mounted) _animController.forward();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.value = 1;
+      return;
+    }
+    // Cap: item 20 must not wait 1.5s.
+    var total = widget.baseDelay + widget.stepDelay * widget.index;
+    if (total > _maxDelay) total = _maxDelay;
+    _timer = Timer(total, () {
+      if (mounted) _controller.forward();
     });
   }
 
   @override
   void dispose() {
-    _animController.dispose();
+    _timer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: _fadeAnim,
-      child: SlideTransition(position: _slideAnim, child: widget.child),
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: RepaintBoundary(child: widget.child),
+      ),
     );
   }
 }
 
-/// Fade animation helper for backward compatibility
+/// Universal fade and slide entrance animation widget.
 class AppFadeAnimation extends StatelessWidget {
   final Widget child;
   final Duration delay;
   final Duration duration;
-  final Offset slideOffset;
+  final Offset offset;
+  final Curve curve;
 
   const AppFadeAnimation({
     super.key,
     required this.child,
     this.delay = Duration.zero,
-    this.duration = const Duration(milliseconds: 500),
-    this.slideOffset = const Offset(0, 20),
+    this.duration = const Duration(milliseconds: 550),
+    this.offset = const Offset(0, -0.06),
+    this.curve = Curves.easeOutCubic,
   });
 
   @override
@@ -323,7 +284,8 @@ class AppFadeAnimation extends StatelessWidget {
     return SmoothEntranceAnimation(
       delay: delay,
       duration: duration,
-      offset: Offset(slideOffset.dx / 100, slideOffset.dy / 100),
+      offset: offset,
+      curve: curve,
       child: child,
     );
   }

@@ -5,10 +5,8 @@ import '../../services/session_service.dart';
 class LoginController extends ChangeNotifier {
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  final TextEditingController emailController =
-      TextEditingController(text: 'test@gmail.com');
-  final TextEditingController passwordController =
-      TextEditingController(text: 'password');
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;

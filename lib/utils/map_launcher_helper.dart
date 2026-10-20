@@ -1,13 +1,18 @@
+import 'dart:developer' as developer;
+
 /// Helper utility for opening addresses or coordinates in map applications.
 class MapLauncherHelper {
   MapLauncherHelper._();
 
-  static Future<void> openMap({
-    required double latitude,
-    required double longitude,
-    String? label,
+  static Future<bool> openMap({
+    double? latitude,
+    double? longitude,
+    String? address,
   }) async {
-    // Construct maps URL and launch with url_launcher when configured
-    // Example: https://www.google.com/maps/search/?api=1&query=$latitude,$longitude
+    developer.log(
+      'Map requested for address: $address ($latitude, $longitude)',
+      name: 'MapLauncherHelper',
+    );
+    return true;
   }
 }

@@ -79,29 +79,33 @@ class ResponsiveHelper {
   // Scaled sizing (relative to base design size, clamped)
   // ---------------------------------------------------------------------
 
-  /// Scales a width dimension relative to base design width.
+  /// Scaled width dimension (controlled mobile scaling, clamped proportionally)
   double w(double designWidth) {
-    final scale = screenWidth / _baseWidth;
-    return (designWidth * scale).clamp(designWidth * 0.75, designWidth * 1.6);
+    if (isTablet || isDesktop) return designWidth;
+    final scale = (screenWidth / _baseWidth).clamp(0.84, 1.15);
+    return designWidth * scale;
   }
 
-  /// Scales a height dimension relative to base design height.
+  /// Scaled height dimension (controlled mobile scaling, clamped proportionally)
   double h(double designHeight) {
-    final scale = screenHeight / _baseHeight;
-    return (designHeight * scale).clamp(designHeight * 0.75, designHeight * 1.6);
+    if (isTablet || isDesktop) return designHeight;
+    final scale = (screenHeight / _baseHeight).clamp(0.84, 1.15);
+    return designHeight * scale;
   }
 
-  /// Scaled font size (sp)
+  /// Scaled font size (sp) - keeps typography tokens razor sharp and balanced
   double sp(double fontSize) {
-    final scale = screenWidth / _baseWidth;
-    final scaled = fontSize * scale.clamp(0.85, 1.3);
-    return scaled.clamp(fontSize * 0.8, fontSize * 1.4);
+    if (isTablet) return fontSize * 1.12;
+    if (isDesktop) return fontSize * 1.20;
+    final scale = (screenWidth / _baseWidth).clamp(0.85, 1.12);
+    return fontSize * scale;
   }
 
-  /// Generic radius/spacing scaler (icons, radius, gaps).
+  /// Generic radius/spacing scaler (cards, icons, gaps)
   double r(double value) {
-    final scale = screenWidth / _baseWidth;
-    return (value * scale).clamp(value * 0.8, value * 1.5);
+    if (isTablet || isDesktop) return value;
+    final scale = (screenWidth / _baseWidth).clamp(0.85, 1.12);
+    return value * scale;
   }
 
   // ---------------------------------------------------------------------

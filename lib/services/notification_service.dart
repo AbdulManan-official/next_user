@@ -11,4 +11,8 @@ class NotificationService {
     // Fetch and return FCM device push token
     return 'sample_device_fcm_token';
   }
+
+  Future<void> deleteToken() async {
+    // Revoke or delete device push notification token
+  }
 }

@@ -15,7 +15,7 @@ class AuthController extends ChangeNotifier {
   UserModel? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-  bool get isAuthenticated => _currentUser != null;
+  bool get isAuthenticated => _currentUser != null || _authService.isLoggedIn;
 
   Future<bool> login(String email, String password) async {
     _isLoading = true;
@@ -23,21 +23,25 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final success = await _authService.login(
-        emailOrPhone: email,
+      final credential = await _authService.signInWithEmailAndPassword(
+        email: email,
         password: password,
       );
-      if (success) {
+      final user = credential.user;
+      if (user != null) {
         _currentUser = UserModel(
-          id: 'usr_001',
-          name: 'Valued Client',
-          email: email,
+          id: user.uid,
+          name: user.displayName ?? 'Valued Client',
+          email: user.email ?? email,
+          phone: user.phoneNumber,
+          avatarUrl: user.photoURL,
           role: 'user',
         );
+        return true;
       }
-      return success;
+      return false;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = _authService.getReadableErrorMessage(e);
       return false;
     } finally {
       _isLoading = false;
@@ -46,7 +50,7 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _authService.logout();
+    await _authService.signOut();
     _currentUser = null;
     notifyListeners();
   }
