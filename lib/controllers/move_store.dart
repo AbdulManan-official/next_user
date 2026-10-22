@@ -217,31 +217,103 @@ class MoveStore extends ChangeNotifier {
     ),
   ];
 
+  final Map<String, List<ChatMessage>> _channelMessages = {};
+
+  List<ChatMessage> getChannelMessages(String channelId) {
+    if (!_channelMessages.containsKey(channelId)) {
+      if (channelId == 'driver_manan') {
+        _channelMessages[channelId] = [
+          ChatMessage(
+            id: 'cr1',
+            text: "Hi Eleanor, vehicle transit route verified. We are on schedule arriving at 12:45 PM.",
+            isUser: false,
+            time: '12:30 PM',
+            senderName: 'Manan Driver',
+          ),
+          ChatMessage(
+            id: 'cr2',
+            text: "📷 Cargo Photo Proof",
+            imagePath: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80',
+            isUser: false,
+            time: '12:35 PM',
+            senderName: 'Manan Driver',
+          ),
+        ];
+      } else if (channelId == 'mgmt') {
+        _channelMessages[channelId] = [
+          ChatMessage(
+            id: 'm1',
+            text: 'Welcome to NextGen Platinum Concierge. Your dedicated relocation team is active 24/7.',
+            isUser: false,
+            time: '11:15 AM',
+            senderName: 'Concierge Management',
+          ),
+          ChatMessage(
+            id: 'm2',
+            text: '📹 Property Walkthrough Video',
+            videoPath: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+            isUser: false,
+            time: '11:20 AM',
+            senderName: 'Concierge Management',
+          ),
+        ];
+      } else {
+        _channelMessages[channelId] = [
+          ChatMessage(
+            id: 'c1',
+            text: 'Good morning Eleanor, how can we assist with your move inventory today?',
+            isUser: false,
+            time: '09:15 AM',
+            senderName: 'Relocation Specialist',
+          ),
+        ];
+      }
+    }
+    return _channelMessages[channelId]!;
+  }
+
+  void addMessageToChannel(String channelId, ChatMessage message) {
+    final list = getChannelMessages(channelId);
+    list.add(message);
+    if (channelId == 'driver_manan') {
+      crewMessages.add(message);
+    } else {
+      conciergeMessages.add(message);
+    }
+    notifyListeners();
+  }
+
   void addConciergeMessage(String text, {required bool isUser}) {
     final now = DateTime.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    conciergeMessages.add(
-      ChatMessage(
-        id: now.millisecondsSinceEpoch.toString(),
-        text: text,
-        isUser: isUser,
-        time: timeStr,
-      ),
+    final msg = ChatMessage(
+      id: now.millisecondsSinceEpoch.toString(),
+      text: text,
+      isUser: isUser,
+      time: timeStr,
+      senderName: isUser ? 'You' : 'Concierge Specialist',
     );
+    conciergeMessages.add(msg);
+    if (_channelMessages.containsKey('mgmt')) {
+      _channelMessages['mgmt']!.add(msg);
+    }
     notifyListeners();
   }
 
   void addCrewMessage(String text, {required bool isUser}) {
     final now = DateTime.now();
     final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    crewMessages.add(
-      ChatMessage(
-        id: now.millisecondsSinceEpoch.toString(),
-        text: text,
-        isUser: isUser,
-        time: timeStr,
-      ),
+    final msg = ChatMessage(
+      id: now.millisecondsSinceEpoch.toString(),
+      text: text,
+      isUser: isUser,
+      time: timeStr,
+      senderName: isUser ? 'You' : 'Manan Driver',
     );
+    crewMessages.add(msg);
+    if (_channelMessages.containsKey('driver_manan')) {
+      _channelMessages['driver_manan']!.add(msg);
+    }
     notifyListeners();
   }
 }

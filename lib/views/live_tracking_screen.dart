@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import '../utils/app_theme_styles.dart';
 import '../utils/responsive_helper.dart';
 import '../widgets/animation_helper.dart';
-import '../widgets/custom_button.dart';
 import '../widgets/concierge_call_sheet.dart';
+import '../widgets/glass_kit.dart';
 import 'chat_screen.dart';
 
-/// Live Tracking screen with animated curved route, crew card, vehicle card, and live timeline.
+/// Luxury Live Tracking screen matching Next Gen gold & frosted glass design system.
 class LiveTrackingScreen extends StatefulWidget {
   const LiveTrackingScreen({super.key});
 
@@ -39,402 +39,408 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: Container(
-            padding: EdgeInsets.all(context.r(6)),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceElevated,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: AppColors.gold,
-              size: context.r(16),
-            ),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'LIVE TRACKING',
-              style: AppTextStyles.overline.copyWith(
-                fontSize: context.sp(9.5),
-                letterSpacing: 1.6,
-              ),
-            ),
-            SizedBox(height: context.h(2)),
-            Text(
-              'In Motion',
-              style: AppTextStyles.headlineSmall.copyWith(
-                fontSize: context.sp(15),
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: r.maxContentWidth),
-            child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(
-                r.pagePadding,
-                context.h(10),
-                r.pagePadding,
-                context.h(32),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-              // Animated Map Card
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 100),
-                child: Container(
-                  height: 230,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AppColors.border, width: 1.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const NxAmbientBackground(),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: r.maxContentWidth),
+                child: Column(
+                  children: [
+                    // Frosted App Bar
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        context.w(16),
+                        context.h(10),
+                        context.w(16),
+                        context.h(12),
                       ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Stack(
-                      children: [
-                        // Map grid background
-                        CustomPaint(
-                          size: const Size(double.infinity, 230),
-                          painter: _MapGridPainter(),
-                        ),
-
-                        // Animated Truck path
-                        AnimatedBuilder(
-                          animation: _truckController,
-                          builder: (context, child) {
-                            return CustomPaint(
-                              size: const Size(double.infinity, 230),
-                              painter: _RoutePainter(progress: _truckController.value),
-                            );
-                          },
-                        ),
-
-                        // Bottom-Left Chip: In Transit · ETA 13:00
-                        Positioned(
-                          bottom: 16,
-                          left: 16,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceElevated.withValues(alpha: 0.9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.success.withValues(alpha: 0.5),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.4),
-                                  blurRadius: 10,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.success,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'In Transit · ETA 13:00',
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                    color: AppColors.textPrimary,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Crew Card
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 150),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
+                      child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 24,
-                            backgroundColor: AppColors.surfaceElevated,
-                            child: Text(
-                              'TK',
-                              style: AppTextStyles.labelLarge.copyWith(
-                                color: AppColors.gold,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                          GlassCircleButton(
+                            icon: Icons.arrow_back_ios_new_rounded,
+                            iconColor: AppColors.gold,
+                            iconSize: context.r(16),
+                            size: context.r(40),
+                            semanticLabel: 'Back',
+                            onTap: () => Navigator.of(context).pop(),
                           ),
-                          const SizedBox(width: 14),
+                          SizedBox(width: context.w(12)),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Tomasz Kowalski',
-                                  style: AppTextStyles.titleLarge,
+                                  'RADAR & TELEMETRY',
+                                  style: AppTextStyles.overline.copyWith(
+                                    color: AppColors.gold,
+                                    fontSize: context.sp(9.5),
+                                    letterSpacing: 1.8,
+                                  ),
                                 ),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.star_rounded,
-                                      color: AppColors.gold,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '4.98 · Lead Specialist',
-                                      style: AppTextStyles.bodySmall.copyWith(
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ],
+                                SizedBox(height: context.h(2)),
+                                Text(
+                                  'Live Transit Tracking',
+                                  style: AppTextStyles.titleMedium.copyWith(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: context.sp(15),
+                                    letterSpacing: 0.2,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: CustomButton(
-                              text: 'Call',
-                              icon: Icons.phone_rounded,
-                              height: 46,
-                              onPressed: () {
-                                ConciergeCallSheet.show(
-                                  context,
-                                  name: 'Tomasz Kowalski',
-                                  role: 'Lead Specialist · On your move',
-                                  avatarInitials: 'TK',
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: CustomButton(
-                              text: 'Message',
-                              icon: Icons.chat_bubble_outline_rounded,
-                              variant: ButtonVariant.outlined,
-                              height: 46,
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  AnimationHelper.smoothRoute(
-                                    page: const ChatScreen(chatType: ChatType.crew),
-                                  ),
-                                );
-                              },
-                            ),
+                          const StatusPill(
+                            label: 'IN MOTION',
+                            icon: Icons.navigation_rounded,
+                            color: AppColors.gold,
+                            fontSize: 9.5,
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+                    ),
 
-              // Vehicle Card
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 200),
-                child: Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceElevated,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: AppColors.border),
+                    // Scrollable telemetry cards
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          r.pagePadding,
+                          context.h(6),
+                          r.pagePadding,
+                          context.h(28),
                         ),
-                        child: const Icon(
-                          Icons.near_me_rounded,
-                          color: AppColors.gold,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Luton 7.5t · NG21',
-                              style: AppTextStyles.titleMedium,
-                            ),
-                            Text(
-                              '4 specialists on board',
-                              style: AppTextStyles.bodySmall.copyWith(
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.success, width: 1.2),
-                          color: AppColors.success.withValues(alpha: 0.1),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.security_rounded,
-                              color: AppColors.success,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Insured',
-                              style: AppTextStyles.labelSmall.copyWith(
-                                color: AppColors.success,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 28),
+                            // Animated Map Radar Card
+                            AppFadeAnimation(
+                              delay: const Duration(milliseconds: 60),
+                              child: NxGlassPanel(
+                                radius: 26,
+                                fillAlpha: 0.08,
+                                padding: EdgeInsets.zero,
+                                child: Container(
+                                  height: 240,
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(26),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(26),
+                                    child: Stack(
+                                      children: [
+                                        // Map grid background
+                                        CustomPaint(
+                                          size: const Size(double.infinity, 240),
+                                          painter: _MapGridPainter(),
+                                        ),
 
-              // Progress Timeline Section
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 250),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.access_time_rounded,
-                          color: AppColors.gold,
-                          size: 18,
+                                        // Animated Truck path
+                                        AnimatedBuilder(
+                                          animation: _truckController,
+                                          builder: (context, child) {
+                                            return CustomPaint(
+                                              size: const Size(double.infinity, 240),
+                                              painter: _RoutePainter(
+                                                progress: _truckController.value,
+                                              ),
+                                            );
+                                          },
+                                        ),
+
+                                        // Top status pill
+                                        Positioned(
+                                          top: 14,
+                                          left: 14,
+                                          child: NxBadge(
+                                            text: 'SATELLITE TELEMETRY · 5G',
+                                            fontSize: context.sp(9),
+                                            letterSpacing: 0.8,
+                                          ),
+                                        ),
+
+                                        // Bottom-Left Status Pill
+                                        Positioned(
+                                          bottom: 14,
+                                          left: 14,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 7,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.surfaceElevated
+                                                  .withValues(alpha: 0.92),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                              border: Border.all(
+                                                color: AppColors.gold
+                                                    .withValues(alpha: 0.4),
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.5),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 3),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 7,
+                                                  height: 7,
+                                                  decoration: const BoxDecoration(
+                                                    color: AppColors.success,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'On Route · ETA 13:00 (18 mins)',
+                                                  style: AppTextStyles.labelSmall
+                                                      .copyWith(
+                                                    color: AppColors.textPrimary,
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: context.sp(11),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: context.h(16)),
+
+                            // Crew Specialist Card
+                            AppFadeAnimation(
+                              delay: const Duration(milliseconds: 120),
+                              child: NxGlassPanel(
+                                radius: 24,
+                                fillAlpha: 0.08,
+                                padding: EdgeInsets.all(context.r(18)),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const NxSectionTitle('ASSIGNED CREW LEAD'),
+                                    SizedBox(height: context.h(12)),
+                                    Row(
+                                      children: [
+                                        NxGoldIconTile(
+                                          icon: Icons.person_pin_rounded,
+                                          size: context.r(46),
+                                          iconSize: context.r(24),
+                                          radius: 15,
+                                        ),
+                                        SizedBox(width: context.w(14)),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Tomasz Kowalski',
+                                                style: AppTextStyles.titleMedium
+                                                    .copyWith(
+                                                  fontSize: context.sp(15),
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                              SizedBox(height: context.h(2)),
+                                              Row(
+                                                children: [
+                                                  const Icon(
+                                                    Icons.star_rounded,
+                                                    color: AppColors.gold,
+                                                    size: 15,
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    '4.98 · Lead Relocation Specialist',
+                                                    style: AppTextStyles.bodySmall
+                                                        .copyWith(
+                                                      color: AppColors.textSecondary,
+                                                      fontSize: context.sp(11.5),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: context.h(16)),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: GoldButton(
+                                            label: 'Call Crew Lead',
+                                            icon: Icons.phone_rounded,
+                                            height: context.h(44),
+                                            onTap: () {
+                                              ConciergeCallSheet.show(
+                                                context,
+                                                name: 'Tomasz Kowalski',
+                                                role:
+                                                    'Lead Specialist · In Transit',
+                                                avatarInitials: 'TK',
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                        SizedBox(width: context.w(10)),
+                                        Expanded(
+                                          child: GlassButton(
+                                            label: 'Message',
+                                            icon:
+                                                Icons.chat_bubble_outline_rounded,
+                                            height: context.h(44),
+                                            onTap: () {
+                                              Navigator.push(
+                                                context,
+                                                AnimationHelper.smoothRoute(
+                                                  page: const ChatScreen(
+                                                    chatType: ChatType.crew,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: context.h(16)),
+
+                            // Luxury Vehicle Card
+                            AppFadeAnimation(
+                              delay: const Duration(milliseconds: 170),
+                              child: NxGlassPanel(
+                                radius: 24,
+                                fillAlpha: 0.08,
+                                padding: EdgeInsets.all(context.r(16)),
+                                child: Row(
+                                  children: [
+                                    NxGoldIconTile(
+                                      icon: Icons.local_shipping_rounded,
+                                      size: context.r(46),
+                                      iconSize: context.r(22),
+                                      radius: 15,
+                                    ),
+                                    SizedBox(width: context.w(14)),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Luton 7.5t Luxury Van · NG21',
+                                            style: AppTextStyles.titleMedium
+                                                .copyWith(
+                                              fontSize: context.sp(14),
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          SizedBox(height: context.h(2)),
+                                          Text(
+                                            'Air suspension · 4 specialists on board',
+                                            style: AppTextStyles.bodySmall
+                                                .copyWith(
+                                              color: AppColors.textMuted,
+                                              fontSize: context.sp(11.5),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    NxBadge(
+                                      text: 'INSURED',
+                                      fontSize: context.sp(9),
+                                      color: AppColors.success,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: context.h(18)),
+
+                            // Progress Timeline Section
+                            AppFadeAnimation(
+                              delay: const Duration(milliseconds: 220),
+                              child: NxGlassPanel(
+                                radius: 24,
+                                fillAlpha: 0.08,
+                                padding: EdgeInsets.all(context.r(18)),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const NxSectionTitle(
+                                        'MISSION FLIGHT LOG & TIMELINE'),
+                                    SizedBox(height: context.h(16)),
+                                    _buildTimelineStep(
+                                      title: 'Crew dispatched from depot',
+                                      time: '07:42',
+                                      isCompleted: true,
+                                    ),
+                                    _buildTimelineStep(
+                                      title: 'Arrived at origin residence',
+                                      time: '08:05',
+                                      isCompleted: true,
+                                    ),
+                                    _buildTimelineStep(
+                                      title: 'White-glove loading complete',
+                                      time: '10:18',
+                                      isCompleted: true,
+                                    ),
+                                    _buildTimelineStep(
+                                      title: 'In transit to destination',
+                                      time: '10:30',
+                                      isCurrent: true,
+                                    ),
+                                    _buildTimelineStep(
+                                      title: 'Unloading & fine art placement',
+                                      time: 'Est. 11:45',
+                                      isDim: true,
+                                    ),
+                                    _buildTimelineStep(
+                                      title: 'Handover & move sign-off',
+                                      time: 'Est. 13:00',
+                                      isDim: true,
+                                      isLast: true,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: context.h(24)),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Text('Progress', style: AppTextStyles.titleMedium),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        children: [
-                          _buildTimelineStep(
-                            title: 'Crew dispatched',
-                            time: '07:42',
-                            isCompleted: true,
-                          ),
-                          _buildTimelineStep(
-                            title: 'Arrived at pickup',
-                            time: '08:05',
-                            isCompleted: true,
-                          ),
-                          _buildTimelineStep(
-                            title: 'Loading complete',
-                            time: '10:18',
-                            isCompleted: true,
-                          ),
-                          _buildTimelineStep(
-                            title: 'In transit to destination',
-                            time: '10:30',
-                            isCurrent: true,
-                          ),
-                          _buildTimelineStep(
-                            title: 'Unloading & setup',
-                            time: 'Est. 11:45',
-                            isDim: true,
-                          ),
-                          _buildTimelineStep(
-                            title: 'Move complete',
-                            time: 'Est. 13:00',
-                            isDim: true,
-                            isLast: true,
-                          ),
-                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
-    ),
-  ),
-);
+    );
   }
 
   Widget _buildTimelineStep({
@@ -462,7 +468,7 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   child: const Icon(
                     Icons.check,
                     color: AppColors.textOnGold,
-                    size: 14,
+                    size: 13,
                   ),
                 )
               else if (isCurrent)
@@ -473,6 +479,13 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                     shape: BoxShape.circle,
                     border: Border.all(color: AppColors.gold, width: 2.5),
                     color: AppColors.gold.withValues(alpha: 0.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.gold.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
                   ),
                   child: Center(
                     child: Container(
@@ -491,15 +504,20 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                   height: 22,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border, width: 2),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      width: 1.5,
+                    ),
                     color: Colors.transparent,
                   ),
                 ),
               if (!isLast)
                 Expanded(
                   child: Container(
-                    width: 2,
-                    color: isCompleted ? AppColors.gold : AppColors.border,
+                    width: 1.5,
+                    color: isCompleted
+                        ? AppColors.gold
+                        : Colors.white.withValues(alpha: 0.12),
                     margin: const EdgeInsets.symmetric(vertical: 4),
                   ),
                 ),
@@ -508,17 +526,23 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
           const SizedBox(width: 14),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.only(bottom: 18),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    title,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: isCurrent
-                          ? AppColors.gold
-                          : (isDim ? AppColors.textMuted : AppColors.textPrimary),
-                      fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: isCurrent
+                            ? AppColors.gold
+                            : (isDim
+                                ? AppColors.textMuted
+                                : AppColors.textPrimary),
+                        fontWeight:
+                            isCurrent ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                   Text(
@@ -526,8 +550,12 @@ class _LiveTrackingScreenState extends State<LiveTrackingScreen>
                     style: AppTextStyles.bodySmall.copyWith(
                       color: isCurrent
                           ? AppColors.goldLight
-                          : (isDim ? AppColors.textMuted : AppColors.textSecondary),
-                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                          : (isDim
+                              ? AppColors.textMuted
+                              : AppColors.textSecondary),
+                      fontWeight:
+                          isCurrent ? FontWeight.w600 : FontWeight.w400,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -545,13 +573,13 @@ class _MapGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final gridPaint = Paint()
-      ..color = AppColors.border.withValues(alpha: 0.3)
+      ..color = Colors.white.withValues(alpha: 0.05)
       ..strokeWidth = 1;
 
-    for (double x = 0; x < size.width; x += 30) {
+    for (double x = 0; x < size.width; x += 28) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
     }
-    for (double y = 0; y < size.height; y += 30) {
+    for (double y = 0; y < size.height; y += 28) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
   }

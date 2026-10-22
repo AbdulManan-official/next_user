@@ -139,12 +139,30 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final String time;
+  final String? imagePath;
+  final String? videoPath;
+  final bool isLocation;
+  final double? latitude;
+  final double? longitude;
+  final String? documentPath;
+  final String? documentName;
+  final String senderName;
+  final bool isRead;
 
   ChatMessage({
     required this.id,
     required this.text,
     required this.isUser,
     required this.time,
+    this.imagePath,
+    this.videoPath,
+    this.isLocation = false,
+    this.latitude,
+    this.longitude,
+    this.documentPath,
+    this.documentName,
+    this.senderName = 'You',
+    this.isRead = true,
   });
 }
 

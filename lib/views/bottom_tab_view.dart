@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../utils/app_theme_styles.dart';
 import 'booking_flow_screen.dart';
@@ -18,17 +17,21 @@ class _NavItem {
 
 const List<_NavItem> _navItems = [
   _NavItem(FontAwesomeIcons.solidHouse, FontAwesomeIcons.house, 'Home'),
-  _NavItem(FontAwesomeIcons.solidCalendarCheck,
-      FontAwesomeIcons.calendarCheck, 'Book'),
+  _NavItem(
+    FontAwesomeIcons.solidCalendarCheck,
+    FontAwesomeIcons.calendarCheck,
+    'Book',
+  ),
   _NavItem(FontAwesomeIcons.truckFast, FontAwesomeIcons.truck, 'Moves'),
   _NavItem(FontAwesomeIcons.solidUser, FontAwesomeIcons.user, 'Profile'),
 ];
 
 // ---------------------------------------------------------------------------
 // Host scaffold.
-// NO extendBody: Scaffold puts the body ABOVE the nav strip, so every screen
-// gets a normal viewport and MediaQuery.padding.bottom stays 0 for them.
-// The nav bar can never change a screen's layout or scroll extent.
+// extendBody: true -> body runs UNDER the floating bar, so screen content
+// shows through at the sides and below the pill (no solid bottom strip).
+// Scaffold reports the bar height via MediaQuery.padding.bottom, so scroll
+// views without explicit padding get the extra space automatically.
 // ---------------------------------------------------------------------------
 class BottomTabView extends StatefulWidget {
   const BottomTabView({super.key, this.initialIndex = 0});
@@ -61,7 +64,6 @@ class _BottomTabViewState extends State<BottomTabView> {
 
   void _onTabTapped(int index) {
     if (index == _currentIndex) return;
-    HapticFeedback.lightImpact();
     _select(index);
   }
 
@@ -88,6 +90,7 @@ class _BottomTabViewState extends State<BottomTabView> {
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
+        extendBody: true,
         body: SafeArea(
           bottom: false,
           child: IndexedStack(
@@ -105,8 +108,8 @@ class _BottomTabViewState extends State<BottomTabView> {
 }
 
 // ---------------------------------------------------------------------------
-// Strip under the body: background + soft gold ambient light + glass bar.
-// The light gives the glass something to frost, so it still looks like glass.
+// Floating wrapper: NO background, NO glow. Only padding + safe area.
+// Everything outside the pill is fully transparent.
 // ---------------------------------------------------------------------------
 class _NavStrip extends StatelessWidget {
   const _NavStrip({required this.currentIndex, required this.onTap});
@@ -114,34 +117,19 @@ class _NavStrip extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
 
-  static final BoxDecoration _stripDecoration = BoxDecoration(
-    color: AppColors.background,
-    gradient: RadialGradient(
-      center: const Alignment(0, 1.1),
-      radius: 1.1,
-      colors: [
-        AppColors.gold.withValues(alpha: 0.12),
-        AppColors.gold.withValues(alpha: 0.0),
-      ],
-    ),
-  );
-
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: _stripDecoration,
-      child: SafeArea(
-        top: false,
-        minimum: const EdgeInsets.only(bottom: 10),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
-          child: Align(
-            alignment: Alignment.topCenter,
-            heightFactor: 1,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: _GlassBar(currentIndex: currentIndex, onTap: onTap),
-            ),
+    return SafeArea(
+      top: false,
+      minimum: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
+        child: Align(
+          alignment: Alignment.topCenter,
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: _GlassBar(currentIndex: currentIndex, onTap: onTap),
           ),
         ),
       ),
@@ -389,8 +377,10 @@ class _NavTabState extends State<_NavTab> {
                     transitionBuilder: (child, animation) => FadeTransition(
                       opacity: animation,
                       child: ScaleTransition(
-                        scale: Tween<double>(begin: 0.8, end: 1.0)
-                            .animate(animation),
+                        scale: Tween<double>(
+                          begin: 0.8,
+                          end: 1.0,
+                        ).animate(animation),
                         child: child,
                       ),
                     ),

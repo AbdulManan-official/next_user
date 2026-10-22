@@ -51,6 +51,7 @@ dependencies:
   chewie: ^1.8.5
   pdf: ^3.11.1
   printing: ^5.13.3
+  crystal_navigation_bar: 2.0.0
 
 dev_dependencies:
   flutter_test:

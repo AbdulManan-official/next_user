@@ -1,6 +1,7 @@
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_errors.dart';
 import '../services/auth_service.dart';
 import '../services/backend_sync_service.dart';
@@ -12,12 +13,15 @@ import '../widgets/app_snack_bar.dart';
 import '../widgets/custom_button.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/logout_dialog.dart';
+import '../widgets/notification_sheet.dart';
+import '../widgets/glass_kit.dart';
 import '../auth/views/login_view.dart';
 import '../auth/widgets/phone_input_field.dart';
-import '../widgets/notification_sheet.dart';
 import 'refer_earn_screen.dart';
 
-/// Ultra-Luxury Concierge Profile & Settings Experience.
+const Color _red = Color(0xFFEF4444);
+
+/// Profile & settings — luxury dark, gold & frosted glass.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -35,19 +39,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     final data = SessionService.instance.userData;
     if (data != null) {
-      if (data['name'] != null && data['name'].toString().isNotEmpty) {
-        _userName = data['name'].toString();
-      }
-      if (data['email'] != null && data['email'].toString().isNotEmpty) {
-        _userEmail = data['email'].toString();
-      }
-      if (data['phone'] != null && data['phone'].toString().isNotEmpty) {
-        _userPhone = data['phone'].toString();
-      }
+      final name = data['name']?.toString() ?? '';
+      final email = data['email']?.toString() ?? '';
+      final phone = data['phone']?.toString() ?? '';
+      if (name.isNotEmpty) _userName = name;
+      if (email.isNotEmpty) _userEmail = email;
+      if (phone.isNotEmpty) _userPhone = phone;
     }
   }
 
-  void _onSignOut(BuildContext context) async {
+  // Phone-only users have no email: show the phone instead of a blank line.
+  String get _contactLine => _userEmail.isNotEmpty ? _userEmail : _userPhone;
+
+  String get _initials {
+    final words = _userName.trim().split(RegExp(r'\s+'));
+    final letters = words
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0])
+        .take(2)
+        .join()
+        .toUpperCase();
+    return letters.isEmpty ? 'VC' : letters;
+  }
+
+  Future<void> _onSignOut() async {
     HapticFeedback.lightImpact();
     final confirmed = await ConfirmDialog.show(
       context,
@@ -57,630 +72,1169 @@ class _ProfileScreenState extends State<ProfileScreen> {
       isDanger: true,
     );
 
-    if (confirmed == true && context.mounted) {
+    if (confirmed == true && mounted) {
       await AuthService.instance.signOut();
-      if (context.mounted) {
-        AppSnackBar.showSuccess(context, 'Signed out successfully.');
-        Navigator.of(context).pushAndRemoveUntil(
-          AnimationHelper.smoothRoute(page: const LoginView()),
-          (route) => false,
-        );
-      }
+      if (!mounted) return;
+      AppSnackBar.showSuccess(context, 'Signed out successfully.');
+      Navigator.of(context).pushAndRemoveUntil(
+        AnimationHelper.smoothRoute(page: const LoginView()),
+        (route) => false,
+      );
     }
   }
 
+  // ── Sheet openers ──────────────────────────────────────────────────────────
   void _showPersonalInfoSheet() {
     HapticFeedback.lightImpact();
-    final nameCtrl = TextEditingController(text: _userName);
-    final emailCtrl = TextEditingController(text: _userEmail);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          padding: EdgeInsets.fromLTRB(
-            context.w(22),
-            context.h(20),
-            context.w(22),
-            MediaQuery.of(ctx).viewInsets.bottom + context.h(24),
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(context.r(28)),
-            ),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: context.w(38),
-                    height: context.h(4),
-                    decoration: BoxDecoration(
-                      color: AppColors.textMuted.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(context.r(2)),
-                    ),
-                  ),
-                ),
-                SizedBox(height: context.h(16)),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Personal Information',
-                      style: AppTextStyles.titleLarge.copyWith(
-                        fontSize: context.sp(18),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      color: AppColors.textMuted,
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                SizedBox(height: context.h(16)),
-
-                // FULL NAME
-                CustomTextField(
-                  label: 'FULL NAME',
-                  controller: nameCtrl,
-                  prefixIcon: Icons.person_outline_rounded,
-                ),
-                SizedBox(height: context.h(14)),
-
-                // EMAIL ADDRESS (Read-only if set; linking option if missing)
-                if (_userEmail.isNotEmpty) ...[
-                  CustomTextField(
-                    label: 'EMAIL ADDRESS',
-                    controller: emailCtrl,
-                    readOnly: true,
-                    prefixIcon: Icons.email_outlined,
-                    suffixIcon: const Icon(
-                      Icons.lock_outline_rounded,
-                      color: AppColors.gold,
-                      size: 18,
-                    ),
-                  ),
-                  SizedBox(height: context.h(4)),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: context.w(4)),
-                    child: Text(
-                      'Email cannot be changed once set.',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ] else ...[
-                  Container(
-                    padding: EdgeInsets.all(context.r(14)),
-                    decoration: BoxDecoration(
-                      color: AppColors.gold.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(context.r(12)),
-                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.mail_outline_rounded, color: AppColors.gold, size: 20),
-                        SizedBox(width: context.w(12)),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'No Email Linked',
-                                style: AppTextStyles.labelMedium.copyWith(
-                                  color: AppColors.gold,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                'Link an email and password to secure email login.',
-                                style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppColors.textMuted,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _showLinkEmailSheet();
-                          },
-                          child: const Text('Link', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                SizedBox(height: context.h(14)),
-
-                // PHONE NUMBER (Verified pill or Link Phone flow)
-                if (_userPhone.isNotEmpty) ...[
-                  CustomTextField(
-                    label: 'VERIFIED CONTACT NUMBER',
-                    controller: TextEditingController(text: _userPhone),
-                    readOnly: true,
-                    prefixIcon: Icons.phone_outlined,
-                    suffixIcon: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: AppColors.gold,
-                      size: 18,
-                    ),
-                  ),
-                ] else ...[
-                  Container(
-                    padding: EdgeInsets.all(context.r(14)),
-                    decoration: BoxDecoration(
-                      color: AppColors.gold.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(context.r(12)),
-                      border: Border.all(color: AppColors.gold.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.phone_outlined, color: AppColors.gold, size: 20),
-                        SizedBox(width: context.w(12)),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'No Phone Linked',
-                                style: AppTextStyles.labelMedium.copyWith(
-                                  color: AppColors.gold,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                'Link your mobile number for SMS OTP login.',
-                                style: AppTextStyles.bodySmall.copyWith(
-                                  color: AppColors.textMuted,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            _showLinkPhoneSheet();
-                          },
-                          child: const Text('Link', style: TextStyle(color: AppColors.gold, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                SizedBox(height: context.h(22)),
-
-                CustomButton(
-                  text: 'Save Changes',
-                  height: context.h(48),
-                  onPressed: () async {
-                    HapticFeedback.mediumImpact();
-                    final newName = nameCtrl.text.trim();
-                    if (newName.length < 2) {
-                      AppSnackBar.showError(context, 'Name must be at least 2 characters.');
-                      return;
-                    }
-                    try {
-                      await BackendSyncService.instance.updateProfile(name: newName);
-                      await FirebaseAuth.instance.currentUser?.updateDisplayName(newName);
-                      setState(() => _userName = newName);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      if (mounted) {
-                        AppSnackBar.showSuccess(
-                          context,
-                          'Profile name updated successfully.',
-                        );
-                      }
-                    } catch (e) {
-                      final msg = readableError(e);
-                      if (mounted) AppSnackBar.showError(context, msg);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    showNxSheet<void>(
+      context,
+      builder: (ctx) => _PersonalInfoSheet(
+        name: _userName,
+        email: _userEmail,
+        phone: _userPhone,
+        onSaved: (newName) {
+          if (!mounted) return;
+          setState(() => _userName = newName);
+          AppSnackBar.showSuccess(context, 'Profile name updated successfully.');
+        },
+        onLinkEmail: () {
+          Navigator.pop(ctx);
+          _showLinkEmailSheet();
+        },
+        onLinkPhone: () {
+          Navigator.pop(ctx);
+          _showLinkPhoneSheet();
+        },
+      ),
     );
   }
 
-  /// Sheet to link Phone via verifyPhone(linking: true) and linkPhone
   void _showLinkPhoneSheet() {
-    final phoneCtrl = TextEditingController();
-    final otpCtrl = TextEditingController();
-    String selectedDial = '+44';
-    String? verificationId;
-    int? resendToken;
-    bool isOtpStep = false;
-    bool isLoading = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (sheetInnerCtx, setSheetState) {
-            String formatPhone() {
-              final raw = phoneCtrl.text.trim();
-              final digits = raw.replaceAll(RegExp(r'\D'), '');
-              if (raw.startsWith('+')) return '+$digits';
-              if (digits.startsWith('0')) return '$selectedDial${digits.substring(1)}';
-              return '$selectedDial$digits';
-            }
-
-            return Container(
-              padding: EdgeInsets.fromLTRB(
-                context.w(22),
-                context.h(20),
-                context.w(22),
-                MediaQuery.of(context).viewInsets.bottom + context.h(24),
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(context.r(28))),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: context.w(38),
-                        height: context.h(4),
-                        decoration: BoxDecoration(
-                          color: AppColors.textMuted.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(context.r(2)),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: context.h(16)),
-                    Text(
-                      'Link Mobile Number',
-                      style: AppTextStyles.titleLarge.copyWith(
-                        fontSize: context.sp(18),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: context.h(16)),
-                    if (!isOtpStep) ...[
-                      PhoneInputField(
-                        label: 'CONTACT NUMBER',
-                        controller: phoneCtrl,
-                        initialCountry: supportedCountries[0],
-                        onCountryChanged: (c) => selectedDial = c.dialCode,
-                      ),
-                      SizedBox(height: context.h(20)),
-                      CustomButton(
-                        text: 'Send Verification Code',
-                        isLoading: isLoading,
-                        height: context.h(48),
-                        onPressed: () async {
-                          final full = formatPhone();
-                          if (full.length < 9) {
-                            AppSnackBar.showError(context, 'Enter a valid mobile number.');
-                            return;
-                          }
-                          setSheetState(() => isLoading = true);
-                          try {
-                            await AuthService.instance.verifyPhone(
-                              phoneNumber: full,
-                              linking: true, // NEVER signInWithCredential!
-                              resendToken: resendToken,
-                              onCodeSent: (id, token) {
-                                setSheetState(() {
-                                  verificationId = id;
-                                  resendToken = token;
-                                  isOtpStep = true;
-                                  isLoading = false;
-                                });
-                                if (mounted) AppSnackBar.showSuccess(context, 'SMS code sent to $full');
-                              },
-                              onAutoDone: () async {
-                                // Auto verified
-                                await FirebaseAuth.instance.currentUser?.getIdToken(true);
-                                await BackendSyncService.instance.syncUserWithBackend();
-                                if (mounted) setState(() => _userPhone = full);
-                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                                if (mounted) AppSnackBar.showSuccess(context, 'Phone linked successfully.');
-                              },
-                              onError: (e) {
-                                setSheetState(() => isLoading = false);
-                                if (mounted) AppSnackBar.showError(context, readableError(e));
-                              },
-                            );
-                          } catch (e) {
-                            setSheetState(() => isLoading = false);
-                            if (mounted) AppSnackBar.showError(context, readableError(e));
-                          }
-                        },
-                      ),
-                    ] else ...[
-                      CustomTextField(
-                        label: '6-DIGIT SMS CODE',
-                        controller: otpCtrl,
-                        keyboardType: TextInputType.number,
-                        prefixIcon: Icons.lock_clock_outlined,
-                      ),
-                      SizedBox(height: context.h(20)),
-                      CustomButton(
-                        text: 'Verify & Link',
-                        isLoading: isLoading,
-                        height: context.h(48),
-                        onPressed: () async {
-                          final code = otpCtrl.text.trim();
-                          if (code.length != 6 || verificationId == null) {
-                            if (mounted) AppSnackBar.showError(context, 'Enter the valid 6-digit code.');
-                            return;
-                          }
-                          setSheetState(() => isLoading = true);
-                          try {
-                            await AuthService.instance.linkPhone(verificationId!, code);
-                            await FirebaseAuth.instance.currentUser?.getIdToken(true);
-                            await BackendSyncService.instance.syncUserWithBackend();
-                            if (mounted) setState(() => _userPhone = formatPhone());
-                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                            if (mounted) AppSnackBar.showSuccess(context, 'Phone linked successfully.');
-                          } catch (e) {
-                            setSheetState(() => isLoading = false);
-                            if (mounted) AppSnackBar.showError(context, readableError(e));
-                          }
-                        },
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    showNxSheet<void>(
+      context,
+      builder: (_) => _LinkPhoneSheet(
+        onLinked: (phone) {
+          if (!mounted) return;
+          setState(() => _userPhone = phone);
+          AppSnackBar.showSuccess(context, 'Phone linked successfully.');
+        },
+      ),
     );
   }
 
-  /// Sheet to link Email + Password via linkEmailPassword
   void _showLinkEmailSheet() {
-    final emailCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    bool isLoading = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (sheetInnerCtx, setSheetState) {
-            return Container(
-              padding: EdgeInsets.fromLTRB(
-                context.w(22),
-                context.h(20),
-                context.w(22),
-                MediaQuery.of(context).viewInsets.bottom + context.h(24),
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(context.r(28))),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: context.w(38),
-                        height: context.h(4),
-                        decoration: BoxDecoration(
-                          color: AppColors.textMuted.withValues(alpha: 0.3),
-                          borderRadius: BorderRadius.circular(context.r(2)),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: context.h(16)),
-                    Text(
-                      'Link Email & Password',
-                      style: AppTextStyles.titleLarge.copyWith(
-                        fontSize: context.sp(18),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: context.h(16)),
-                    CustomTextField(
-                      label: 'EMAIL ADDRESS',
-                      controller: emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      prefixIcon: Icons.email_outlined,
-                    ),
-                    SizedBox(height: context.h(12)),
-                    CustomTextField(
-                      label: 'CREATE PASSWORD',
-                      controller: passCtrl,
-                      obscureText: true,
-                      prefixIcon: Icons.lock_outline_rounded,
-                    ),
-                    SizedBox(height: context.h(12)),
-                    CustomTextField(
-                      label: 'CONFIRM PASSWORD',
-                      controller: confirmCtrl,
-                      obscureText: true,
-                      prefixIcon: Icons.shield_outlined,
-                    ),
-                    SizedBox(height: context.h(20)),
-                    CustomButton(
-                      text: 'Link Email',
-                      isLoading: isLoading,
-                      height: context.h(48),
-                      onPressed: () async {
-                        final email = emailCtrl.text.trim().toLowerCase();
-                        final pass = passCtrl.text;
-                        final confirm = confirmCtrl.text;
-
-                        if (email.isEmpty || !email.contains('@')) {
-                          AppSnackBar.showError(context, 'Enter a valid email address.');
-                          return;
-                        }
-                        if (pass.length < 8) {
-                          AppSnackBar.showError(context, 'Password must be at least 8 characters.');
-                          return;
-                        }
-                        if (pass != confirm) {
-                          AppSnackBar.showError(context, 'Passwords do not match.');
-                          return;
-                        }
-
-                        setSheetState(() => isLoading = true);
-                        try {
-                          await AuthService.instance.linkEmailPassword(email, pass);
-                          await FirebaseAuth.instance.currentUser?.getIdToken(true);
-                          await BackendSyncService.instance.updateProfile(name: _userName, email: email);
-                          await BackendSyncService.instance.syncUserWithBackend();
-                          if (mounted) setState(() => _userEmail = email);
-                          if (sheetCtx.mounted) Navigator.pop(sheetCtx);
-                          if (mounted) {
-                            AppSnackBar.showSuccess(
-                              context,
-                              'Email linked successfully. Verification link sent to inbox.',
-                            );
-                          }
-                        } catch (e) {
-                          setSheetState(() => isLoading = false);
-                          if (mounted) AppSnackBar.showError(context, readableError(e));
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    showNxSheet<void>(
+      context,
+      builder: (_) => _LinkEmailSheet(
+        userName: _userName,
+        onLinked: (email) {
+          if (!mounted) return;
+          setState(() => _userEmail = email);
+          AppSnackBar.showSuccess(
+            context,
+            'Email linked successfully. Verification link sent to inbox.',
+          );
+        },
+      ),
     );
   }
 
   void _showSavedAddressesSheet() {
     HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          padding: EdgeInsets.all(context.r(22)),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(context.r(28)),
+    showNxSheet<void>(
+      context,
+      builder: (ctx) => NxSheet(
+        title: 'Saved Luxury Residences',
+        child: Column(
+          children: [
+            const _AddressItem(
+              title: 'Rosewood Manor (Primary)',
+              address: "14 St. Leonard's Hill, Windsor SL4 2HJ",
+              isDefault: true,
             ),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: context.w(38),
-                  height: context.h(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.textMuted.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(context.r(2)),
-                  ),
-                ),
-              ),
-              SizedBox(height: context.h(16)),
-              Text(
-                'Saved Luxury Residences',
-                style: AppTextStyles.titleLarge.copyWith(
-                  fontSize: context.sp(18),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: context.h(16)),
-              _buildAddressItem(
-                context,
-                title: 'Rosewood Manor (Primary)',
-                address: '14 St. Leonard\'s Hill, Windsor SL4 2HJ',
-                isDefault: true,
-              ),
-              SizedBox(height: context.h(10)),
-              _buildAddressItem(
-                context,
-                title: 'City Penthouse',
-                address: '12 Kingsway, Slough SL1 1XN',
-                isDefault: false,
-              ),
-              SizedBox(height: context.h(18)),
-              CustomButton(
-                text: 'Add New Residence',
-                icon: Icons.add_location_alt_rounded,
-                variant: ButtonVariant.outlined,
-                height: context.h(46),
-                onPressed: () {
-                  Navigator.pop(ctx);
+            SizedBox(height: context.h(10)),
+            const _AddressItem(
+              title: 'City Penthouse',
+              address: '12 Kingsway, Slough SL1 1XN',
+              isDefault: false,
+            ),
+            SizedBox(height: context.h(18)),
+            CustomButton(
+              text: 'Add New Residence',
+              icon: Icons.add_location_alt_rounded,
+              variant: ButtonVariant.outlined,
+              height: context.h(46),
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (mounted) {
                   AppSnackBar.showInfo(context, 'Address locator opening...');
-                },
-              ),
-            ],
-          ),
-        );
-      },
+                }
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildAddressItem(
-    BuildContext context, {
-    required String title,
-    required String address,
-    required bool isDefault,
-  }) {
-    return Container(
-      padding: EdgeInsets.all(context.r(14)),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(context.r(16)),
-        border: Border.all(
-          color: isDefault
-              ? AppColors.gold.withValues(alpha: 0.45)
-              : AppColors.border,
+  void _showPaymentSheet() {
+    HapticFeedback.lightImpact();
+    showNxSheet<void>(
+      context,
+      builder: (ctx) => NxSheet(
+        title: 'Payment Methods',
+        child: Column(
+          children: [
+            _PaymentCard(holder: _userName),
+            SizedBox(height: context.h(20)),
+            CustomButton(
+              text: 'Add New Card',
+              icon: Icons.add_card_rounded,
+              variant: ButtonVariant.outlined,
+              height: context.h(46),
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (mounted) {
+                  AppSnackBar.showInfo(
+                      context, 'Secure payment gateway opening...');
+                }
+              },
+            ),
+          ],
         ),
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(context.r(8)),
-            decoration: BoxDecoration(
-              color: const Color(0xFF352618),
-              borderRadius: BorderRadius.circular(context.r(10)),
-              border: Border.all(
-                color: AppColors.gold.withValues(alpha: 0.4),
+    );
+  }
+
+  void _showWhiteGlovePreferencesSheet() {
+    HapticFeedback.lightImpact();
+    showNxSheet<void>(
+      context,
+      builder: (_) => _PreferencesSheet(
+        onSaved: () {
+          if (!mounted) return;
+          AppSnackBar.showSuccess(context, 'White-Glove preferences updated.');
+        },
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final r = context.responsive;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return Stack(
+      children: [
+        const Positioned.fill(child: NxAmbientBackground()),
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: r.maxContentWidth),
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                r.pagePadding,
+                context.h(14),
+                r.pagePadding,
+                context.h(24) + (bottomInset > 60 ? bottomInset : bottomInset + 88),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppFadeAnimation(child: _buildHeader(context)),
+                  SizedBox(height: context.h(18)),
+
+                  AppFadeAnimation(
+                    delay: const Duration(milliseconds: 100),
+                    child: _buildMembershipCard(context),
+                  ),
+                  SizedBox(height: context.h(24)),
+
+                  NxSettingsGroup(
+                    title: 'ACCOUNT & CREDENTIALS',
+                    tiles: [
+                      NxSettingsTile(
+                        icon: Icons.badge_outlined,
+                        label: 'Personal Information',
+                        subtitle: 'Name, email & phone number',
+                        onTap: _showPersonalInfoSheet,
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.location_on_outlined,
+                        label: 'Saved Residences',
+                        subtitle: '2 addresses · Windsor & Slough',
+                        onTap: _showSavedAddressesSheet,
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.credit_card_rounded,
+                        label: 'Payment & Billing',
+                        subtitle: 'Mastercard •••• 4242 · Primary Card',
+                        onTap: _showPaymentSheet,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.h(22)),
+
+                  NxSettingsGroup(
+                    title: 'REWARDS & CONCIERGE',
+                    tiles: [
+                      NxSettingsTile(
+                        icon: Icons.card_giftcard_rounded,
+                        label: 'Refer & Earn Rewards',
+                        subtitle: 'Invite friends & earn £50 credit each',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            AnimationHelper.smoothRoute(
+                              page: const ReferEarnScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.auto_awesome_rounded,
+                        label: 'White-Glove Standards',
+                        subtitle: 'Eco-crates, fine art & priority crew',
+                        onTap: _showWhiteGlovePreferencesSheet,
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.notifications_none_rounded,
+                        label: 'Notifications & Alerts',
+                        subtitle: 'Live transit tracking & SMS alerts',
+                        onTap: () => NotificationSheet.show(context),
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.security_rounded,
+                        label: 'Insurance & Coverage',
+                        subtitle: 'Platinum £100,000 policy included',
+                        onTap: () {
+                          AppSnackBar.showInfo(
+                            context,
+                            'Platinum Transit Insurance Policy active for all moves.',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.h(22)),
+
+                  NxSettingsGroup(
+                    title: 'LEGAL & APP INFO',
+                    tiles: [
+                      NxSettingsTile(
+                        icon: Icons.privacy_tip_outlined,
+                        label: 'Terms & Privacy Policy',
+                        subtitle: 'Noble Moving luxury terms v2.4',
+                        onTap: () {
+                          AppSnackBar.showInfo(
+                            context,
+                            'Noble Moving Terms & Conditions v2.4',
+                          );
+                        },
+                      ),
+                      NxSettingsTile(
+                        icon: Icons.star_border_rounded,
+                        label: 'Rate Experience',
+                        subtitle: 'Share your concierge review',
+                        onTap: () {
+                          AppSnackBar.showSuccess(
+                            context,
+                            'Thank you for your rating!',
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: context.h(26)),
+
+                  AppFadeAnimation(
+                    delay: const Duration(milliseconds: 200),
+                    child: _buildSignOut(context),
+                  ),
+                ],
               ),
             ),
-            child: Icon(
-              Icons.home_work_rounded,
-              color: AppColors.goldLight,
-              size: context.r(18),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'CONCIERGE ACCOUNT',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.overline.copyWith(
+                  color: AppColors.gold,
+                  fontSize: context.sp(10.5),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2.4,
+                ),
+              ),
+              SizedBox(height: context.h(3)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Profile & Settings',
+                  style: AppTextStyles.titleLarge.copyWith(
+                    color: AppColors.textPrimary,
+                    fontSize: context.sp(26),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    height: 1.1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: context.w(10)),
+        NxGlassPanel(
+          radius: 20,
+          fillAlpha: 0.10,
+          padding: EdgeInsets.symmetric(
+            horizontal: context.w(12),
+            vertical: context.h(7),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.workspace_premium_rounded,
+                  color: AppColors.goldLight, size: context.r(15)),
+              SizedBox(width: context.w(5)),
+              Text(
+                'Platinum VIP',
+                style: AppTextStyles.labelSmall.copyWith(
+                  color: AppColors.goldLight,
+                  fontSize: context.sp(11),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMembershipCard(BuildContext context) {
+    return NxGlassPanel(
+      radius: 30,
+      blur: 16,
+      fillAlpha: 0.09,
+      padding: EdgeInsets.all(context.r(20)),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Monogram avatar with glass ring + glow
+              Container(
+                width: context.r(60),
+                height: context.r(60),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppColors.goldLinearGradient,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    width: 1.4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.gold.withValues(alpha: 0.38),
+                      blurRadius: 22,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    _initials,
+                    style: AppTextStyles.headlineMedium.copyWith(
+                      color: AppColors.textOnGold,
+                      fontSize: context.sp(21),
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: context.w(14)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _userName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.titleLarge.copyWith(
+                              color: AppColors.textPrimary,
+                              fontSize: context.sp(19),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                        ),
+                        if (_userPhone.isNotEmpty) ...[
+                          SizedBox(width: context.w(6)),
+                          Icon(Icons.verified_rounded,
+                              color: AppColors.gold, size: context.r(17)),
+                        ],
+                      ],
+                    ),
+                    if (_contactLine.isNotEmpty) ...[
+                      SizedBox(height: context.h(3)),
+                      Text(
+                        _contactLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: context.sp(12),
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: context.h(7)),
+                    NxBadge(
+                      text: 'ID: NX-88219 · Priority Access',
+                      fontSize: context.sp(10),
+                      letterSpacing: 0.3,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: context.h(18)),
+          const NxHairline(),
+          SizedBox(height: context.h(14)),
+          Row(
+            children: [
+              const NxMiniStat(value: '4', label: 'Moves Completed'),
+              Container(
+                width: 1,
+                height: context.h(28),
+                color: Colors.white.withValues(alpha: 0.10),
+              ),
+              const NxMiniStat(value: '£350', label: 'Referral Earned'),
+              Container(
+                width: 1,
+                height: context.h(28),
+                color: Colors.white.withValues(alpha: 0.10),
+              ),
+              const NxMiniStat(value: '100%', label: 'White-Glove'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignOut(BuildContext context) {
+    return Center(
+      child: Column(
+        children: [
+          NxPressable(
+            onTap: _onSignOut,
+            child: NxGlassPanel(
+              radius: 18,
+              tint: _red,
+              padding: EdgeInsets.symmetric(
+                horizontal: context.w(24),
+                vertical: context.h(14),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.logout_rounded, color: _red, size: context.r(18)),
+                  SizedBox(width: context.w(8)),
+                  Text(
+                    'Sign Out of Platinum Account',
+                    style: AppTextStyles.labelLarge.copyWith(
+                      color: _red,
+                      fontSize: context.sp(13.5),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+          SizedBox(height: context.h(14)),
+          Text(
+            'Next User Concierge · v2.4.0 (Build 108)',
+            style: AppTextStyles.bodySmall.copyWith(
+              fontSize: context.sp(11),
+              color: AppColors.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SETTINGS LIST PARTS
+// ════════════════════════════════════════════════════════════════════════════
+//  SHEETS (each owns and disposes its own controllers)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Personal information ────────────────────────────────────────────────────
+class _PersonalInfoSheet extends StatefulWidget {
+  const _PersonalInfoSheet({
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.onSaved,
+    required this.onLinkEmail,
+    required this.onLinkPhone,
+  });
+
+  final String name;
+  final String email;
+  final String phone;
+  final ValueChanged<String> onSaved;
+  final VoidCallback onLinkEmail;
+  final VoidCallback onLinkPhone;
+
+  @override
+  State<_PersonalInfoSheet> createState() => _PersonalInfoSheetState();
+}
+
+class _PersonalInfoSheetState extends State<_PersonalInfoSheet> {
+  late final TextEditingController _nameCtrl =
+      TextEditingController(text: widget.name);
+  late final TextEditingController _emailCtrl =
+      TextEditingController(text: widget.email);
+  late final TextEditingController _phoneCtrl =
+      TextEditingController(text: widget.phone);
+  bool _saving = false;
+  bool _sendingVerify = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    HapticFeedback.mediumImpact();
+    final newName = _nameCtrl.text.trim();
+    if (newName.length < 2) {
+      AppSnackBar.showError(context, 'Name must be at least 2 characters.');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await BackendSyncService.instance.updateProfile(name: newName);
+      await FirebaseAuth.instance.currentUser?.updateDisplayName(newName);
+      if (!mounted) return;
+      final onSaved = widget.onSaved;
+      Navigator.pop(context);
+      onSaved(newName);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      AppSnackBar.showError(context, readableError(e));
+    }
+  }
+
+  Future<void> _sendVerify() async {
+    setState(() => _sendingVerify = true);
+    try {
+      await AuthService.instance.sendEmailVerification();
+      if (!mounted) return;
+      AppSnackBar.showSuccess(context, 'Verification link sent to your inbox.');
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackBar.showError(context, readableError(e));
+    } finally {
+      if (mounted) setState(() => _sendingVerify = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final providers =
+        user?.providerData.map((p) => p.providerId).toSet() ?? <String>{};
+    final emailVerified = user?.emailVerified ?? false;
+
+    return NxSheet(
+      title: 'Personal Information',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Sign-in methods
+          Text(
+            'SIGN-IN METHODS',
+            style: AppTextStyles.overline.copyWith(
+              color: AppColors.textMuted,
+              fontSize: context.sp(10),
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.6,
+            ),
+          ),
+          SizedBox(height: context.h(8)),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              NxMethodChip(
+                label: 'Email',
+                icon: Icons.email_outlined,
+                linked: providers.contains('password'),
+              ),
+              NxMethodChip(
+                label: 'Phone',
+                icon: Icons.phone_outlined,
+                linked: providers.contains('phone'),
+              ),
+              NxMethodChip(
+                label: 'Google',
+                icon: Icons.g_mobiledata_rounded,
+                linked: providers.contains('google.com'),
+              ),
+            ],
+          ),
+          SizedBox(height: context.h(18)),
+
+          CustomTextField(
+            label: 'FULL NAME',
+            controller: _nameCtrl,
+            prefixIcon: Icons.person_outline_rounded,
+          ),
+          SizedBox(height: context.h(14)),
+
+          // Email
+          if (widget.email.isNotEmpty) ...[
+            CustomTextField(
+              label: 'EMAIL ADDRESS',
+              controller: _emailCtrl,
+              readOnly: true,
+              prefixIcon: Icons.email_outlined,
+              suffixIcon: const Icon(
+                Icons.lock_outline_rounded,
+                color: AppColors.gold,
+                size: 18,
+              ),
+            ),
+            SizedBox(height: context.h(6)),
+            if (!emailVerified)
+              Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded,
+                      color: AppColors.gold, size: 15),
+                  SizedBox(width: context.w(6)),
+                  Expanded(
+                    child: Text(
+                      'Email not verified yet.',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textMuted,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _sendingVerify ? null : _sendVerify,
+                    child: Text(
+                      _sendingVerify ? 'Sending...' : 'Send link',
+                      style: const TextStyle(
+                        color: AppColors.gold,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: context.w(4)),
+                child: Text(
+                  'Email cannot be changed once set.',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+          ] else
+            NxLinkPrompt(
+              icon: Icons.mail_outline_rounded,
+              title: 'No Email Linked',
+              message: 'Link an email and password to secure email login.',
+              onLink: widget.onLinkEmail,
+            ),
+          SizedBox(height: context.h(14)),
+
+          // Phone
+          if (widget.phone.isNotEmpty)
+            CustomTextField(
+              label: 'VERIFIED CONTACT NUMBER',
+              controller: _phoneCtrl,
+              readOnly: true,
+              prefixIcon: Icons.phone_outlined,
+              suffixIcon: const Icon(
+                Icons.check_circle_outline_rounded,
+                color: AppColors.gold,
+                size: 18,
+              ),
+            )
+          else
+            NxLinkPrompt(
+              icon: Icons.phone_outlined,
+              title: 'No Phone Linked',
+              message: 'Link your mobile number for SMS OTP login.',
+              onLink: widget.onLinkPhone,
+            ),
+          SizedBox(height: context.h(22)),
+
+          CustomButton(
+            text: 'Save Changes',
+            isLoading: _saving,
+            height: context.h(48),
+            onPressed: _save,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Link phone (verifyPhone(linking: true) -> linkPhone) ────────────────────
+class _LinkPhoneSheet extends StatefulWidget {
+  const _LinkPhoneSheet({required this.onLinked});
+
+  final ValueChanged<String> onLinked;
+
+  @override
+  State<_LinkPhoneSheet> createState() => _LinkPhoneSheetState();
+}
+
+class _LinkPhoneSheetState extends State<_LinkPhoneSheet> {
+  final TextEditingController _phoneCtrl = TextEditingController();
+  final TextEditingController _otpCtrl = TextEditingController();
+  late String _dial = supportedCountries[0].dialCode;
+  String? _verificationId;
+  int? _resendToken;
+  bool _otpStep = false;
+  bool _loading = false;
+  int _cooldown = 0;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _phoneCtrl.dispose();
+    _otpCtrl.dispose();
+    super.dispose();
+  }
+
+  String _formatPhone() {
+    final raw = _phoneCtrl.text.trim();
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (raw.startsWith('+')) return '+$digits';
+    if (digits.startsWith('0')) return '$_dial${digits.substring(1)}';
+    return '$_dial$digits';
+  }
+
+  void _startCooldown() {
+    _timer?.cancel();
+    if (!mounted) return;
+    setState(() => _cooldown = 60);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _cooldown--);
+      if (_cooldown <= 0) t.cancel();
+    });
+  }
+
+  void _fail(Object e) {
+    if (!mounted) return;
+    setState(() => _loading = false);
+    final msg = readableError(e);
+    if (msg.isNotEmpty) AppSnackBar.showError(context, msg);
+    if (e is FirebaseAuthException && e.code == 'too-many-requests') {
+      _startCooldown();
+    }
+  }
+
+  void _finish(String phone) {
+    if (!mounted) return;
+    final onLinked = widget.onLinked;
+    Navigator.pop(context);
+    onLinked(phone);
+  }
+
+  Future<void> _sendCode() async {
+    if (_cooldown > 0 || _loading) return;
+    final full = _formatPhone();
+    if (full.length < 9) {
+      AppSnackBar.showError(context, 'Enter a valid mobile number.');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AuthService.instance.verifyPhone(
+        phoneNumber: full,
+        linking: true, // NEVER signInWithCredential in this flow
+        resendToken: _resendToken,
+        onCodeSent: (id, token) {
+          if (!mounted) return;
+          setState(() {
+            _verificationId = id;
+            _resendToken = token;
+            _otpStep = true;
+            _loading = false;
+          });
+          _startCooldown();
+          AppSnackBar.showSuccess(context, 'SMS code sent to $full');
+        },
+        onAutoDone: () async {
+          try {
+            await FirebaseAuth.instance.currentUser?.getIdToken(true);
+            await BackendSyncService.instance.syncUserWithBackend();
+            _finish(full);
+          } catch (e) {
+            _fail(e);
+          }
+        },
+        onError: _fail,
+      );
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  Future<void> _verify() async {
+    final code = _otpCtrl.text.trim();
+    if (code.length != 6 || _verificationId == null) {
+      AppSnackBar.showError(context, 'Enter the valid 6-digit code.');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AuthService.instance.linkPhone(_verificationId!, code);
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      await BackendSyncService.instance.syncUserWithBackend();
+      _finish(_formatPhone());
+    } catch (e) {
+      _fail(e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NxSheet(
+      title: 'Link Mobile Number',
+      subtitle: 'Add a phone so you can also sign in with an SMS code.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_otpStep) ...[
+            PhoneInputField(
+              label: 'CONTACT NUMBER',
+              controller: _phoneCtrl,
+              initialCountry: supportedCountries[0],
+              onCountryChanged: (c) => _dial = c.dialCode,
+            ),
+            SizedBox(height: context.h(20)),
+            CustomButton(
+              text: 'Send Verification Code',
+              isLoading: _loading,
+              height: context.h(48),
+              onPressed: _sendCode,
+            ),
+          ] else ...[
+            CustomTextField(
+              label: '6-DIGIT SMS CODE',
+              controller: _otpCtrl,
+              keyboardType: TextInputType.number,
+              prefixIcon: Icons.lock_clock_outlined,
+            ),
+            SizedBox(height: context.h(20)),
+            CustomButton(
+              text: 'Verify & Link',
+              isLoading: _loading,
+              height: context.h(48),
+              onPressed: _verify,
+            ),
+            SizedBox(height: context.h(6)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton(
+                  onPressed: _loading
+                      ? null
+                      : () => setState(() {
+                            _otpStep = false;
+                            _otpCtrl.clear();
+                          }),
+                  child: const Text(
+                    'Change number',
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+                TextButton(
+                  onPressed: (_loading || _cooldown > 0) ? null : _sendCode,
+                  child: Text(
+                    _cooldown > 0 ? 'Resend in ${_cooldown}s' : 'Resend code',
+                    style: TextStyle(
+                      color: _cooldown > 0
+                          ? AppColors.textMuted
+                          : AppColors.gold,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Link email + password ───────────────────────────────────────────────────
+class _LinkEmailSheet extends StatefulWidget {
+  const _LinkEmailSheet({required this.userName, required this.onLinked});
+
+  final String userName;
+  final ValueChanged<String> onLinked;
+
+  @override
+  State<_LinkEmailSheet> createState() => _LinkEmailSheetState();
+}
+
+class _LinkEmailSheetState extends State<_LinkEmailSheet> {
+  final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _passCtrl = TextEditingController();
+  final TextEditingController _confirmCtrl = TextEditingController();
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _link() async {
+    final email = _emailCtrl.text.trim().toLowerCase();
+    final pass = _passCtrl.text;
+    final confirm = _confirmCtrl.text;
+
+    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+      AppSnackBar.showError(context, 'Enter a valid email address.');
+      return;
+    }
+    if (pass.length < 8) {
+      AppSnackBar.showError(context, 'Password must be at least 8 characters.');
+      return;
+    }
+    if (pass != confirm) {
+      AppSnackBar.showError(context, 'Passwords do not match.');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await AuthService.instance.linkEmailPassword(email, pass);
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      await BackendSyncService.instance
+          .updateProfile(name: widget.userName, email: email);
+      await BackendSyncService.instance.syncUserWithBackend();
+      if (!mounted) return;
+      final onLinked = widget.onLinked;
+      Navigator.pop(context);
+      onLinked(email);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      final msg = readableError(e);
+      if (msg.isNotEmpty) AppSnackBar.showError(context, msg);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NxSheet(
+      title: 'Link Email & Password',
+      subtitle: 'Add an email so you can also sign in with a password.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CustomTextField(
+            label: 'EMAIL ADDRESS',
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: Icons.email_outlined,
+          ),
+          SizedBox(height: context.h(12)),
+          CustomTextField(
+            label: 'CREATE PASSWORD',
+            controller: _passCtrl,
+            obscureText: true,
+            prefixIcon: Icons.lock_outline_rounded,
+          ),
+          SizedBox(height: context.h(12)),
+          CustomTextField(
+            label: 'CONFIRM PASSWORD',
+            controller: _confirmCtrl,
+            obscureText: true,
+            prefixIcon: Icons.shield_outlined,
+          ),
+          SizedBox(height: context.h(20)),
+          CustomButton(
+            text: 'Link Email',
+            isLoading: _loading,
+            height: context.h(48),
+            onPressed: _link,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── White-glove preferences ─────────────────────────────────────────────────
+class _PreferencesSheet extends StatefulWidget {
+  const _PreferencesSheet({required this.onSaved});
+
+  final VoidCallback onSaved;
+
+  @override
+  State<_PreferencesSheet> createState() => _PreferencesSheetState();
+}
+
+class _PreferencesSheetState extends State<_PreferencesSheet> {
+  bool _ecoPacking = true;
+  bool _fineArt = true;
+  bool _priority = true;
+
+  Widget _switch({
+    required bool value,
+    required String title,
+    required String subtitle,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      value: value,
+      activeThumbColor: AppColors.gold,
+      activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        title,
+        style: AppTextStyles.bodyMedium.copyWith(
+          color: AppColors.textPrimary,
+          fontSize: context.sp(13.5),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: AppTextStyles.bodySmall.copyWith(
+          color: AppColors.textMuted,
+          fontSize: context.sp(11),
+        ),
+      ),
+      onChanged: onChanged,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NxSheet(
+      title: 'White-Glove Preferences',
+      subtitle: 'Default luxury standards applied to all your bookings.',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _switch(
+            value: _ecoPacking,
+            title: 'Eco-Friendly Wooden Crating',
+            subtitle: 'Zero single-use plastics during residential packing',
+            onChanged: (v) => setState(() => _ecoPacking = v),
+          ),
+          const NxHairline(),
+          _switch(
+            value: _fineArt,
+            title: 'Fine Art & Antique Protocol',
+            subtitle: 'Temperature controlled vehicle requirement flag',
+            onChanged: (v) => setState(() => _fineArt = v),
+          ),
+          const NxHairline(),
+          _switch(
+            value: _priority,
+            title: 'Priority Concierge Dispatch',
+            subtitle: 'Guaranteed elite crew lead assignment',
+            onChanged: (v) => setState(() => _priority = v),
+          ),
+          SizedBox(height: context.h(18)),
+          CustomButton(
+            text: 'Save Preferences',
+            height: context.h(46),
+            onPressed: () {
+              final onSaved = widget.onSaved;
+              Navigator.pop(context);
+              onSaved();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Addresses / payment bodies ──────────────────────────────────────────────
+class _AddressItem extends StatelessWidget {
+  const _AddressItem({
+    required this.title,
+    required this.address,
+    required this.isDefault,
+  });
+
+  final String title;
+  final String address;
+  final bool isDefault;
+
+  @override
+  Widget build(BuildContext context) {
+    return NxGlassPanel(
+      radius: 20,
+      fillAlpha: 0.08,
+      tint: isDefault ? AppColors.gold : Colors.white,
+      padding: EdgeInsets.all(context.r(14)),
+      child: Row(
+        children: [
+          NxGoldIconTile(
+            icon: Icons.home_work_rounded,
+            size: context.r(40),
+            iconSize: context.r(19),
+            radius: 13,
           ),
           SizedBox(width: context.w(12)),
           Expanded(
@@ -695,29 +1249,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.textPrimary,
                           fontWeight: FontWeight.w700,
-                          fontSize: context.sp(13),
+                          fontSize: context.sp(13.5),
                         ),
                       ),
                     ),
                     if (isDefault)
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: context.w(6),
-                          vertical: context.h(2),
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.gold.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(context.r(6)),
-                        ),
-                        child: Text(
-                          'DEFAULT',
-                          style: AppTextStyles.labelSmall.copyWith(
-                            color: AppColors.gold,
-                            fontSize: context.sp(9),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                      NxBadge(
+                        text: 'DEFAULT',
+                        fontSize: context.sp(9),
+                        letterSpacing: 0.8,
                       ),
                   ],
                 ),
@@ -738,905 +1280,94 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+}
 
-  void _showPaymentSheet() {
-    HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          padding: EdgeInsets.all(context.r(22)),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(context.r(28)),
-            ),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: context.w(38),
-                  height: context.h(4),
-                  decoration: BoxDecoration(
-                    color: AppColors.textMuted.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(context.r(2)),
-                  ),
-                ),
-              ),
-              SizedBox(height: context.h(16)),
-              Text(
-                'Payment Methods',
-                style: AppTextStyles.titleLarge.copyWith(
-                  fontSize: context.sp(18),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(height: context.h(16)),
-              // Gold Black Luxury Card Mockup
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(context.r(18)),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2E2419), Color(0xFF1B140D), Color(0xFF120E0A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(context.r(18)),
-                  border: Border.all(
-                    color: AppColors.gold.withValues(alpha: 0.5),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.gold.withValues(alpha: 0.16),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'PLATINUM CONCIERGE',
-                          style: AppTextStyles.overline.copyWith(
-                            color: AppColors.gold,
-                            letterSpacing: 1.5,
-                            fontSize: context.sp(10),
-                          ),
-                        ),
-                        Icon(
-                          Icons.contactless_rounded,
-                          color: AppColors.goldLight,
-                          size: context.r(20),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: context.h(16)),
-                    Text(
-                      '••••  ••••  ••••  4242',
-                      style: AppTextStyles.titleLarge.copyWith(
-                        color: AppColors.textPrimary,
-                        fontSize: context.sp(16),
-                        letterSpacing: 2.2,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(height: context.h(14)),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _userName.toUpperCase(),
-                          style: AppTextStyles.labelMedium.copyWith(
-                            color: AppColors.textSecondary,
-                            fontSize: context.sp(11),
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                        Text(
-                          'EXP 08/28',
-                          style: AppTextStyles.labelMedium.copyWith(
-                            color: AppColors.gold,
-                            fontSize: context.sp(11),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: context.h(20)),
-              CustomButton(
-                text: 'Add New Card',
-                icon: Icons.add_card_rounded,
-                variant: ButtonVariant.outlined,
-                height: context.h(46),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  AppSnackBar.showInfo(context, 'Secure payment gateway opening...');
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+class _PaymentCard extends StatelessWidget {
+  const _PaymentCard({required this.holder});
 
-  void _showWhiteGlovePreferencesSheet() {
-    HapticFeedback.lightImpact();
-    bool ecoPacking = true;
-    bool fineArtHandling = true;
-    bool priorityDispatch = true;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
-              padding: EdgeInsets.all(context.r(22)),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(context.r(28)),
-                ),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: context.w(38),
-                      height: context.h(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.textMuted.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(context.r(2)),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: context.h(16)),
-                  Text(
-                    'White-Glove Preferences',
-                    style: AppTextStyles.titleLarge.copyWith(
-                      fontSize: context.sp(18),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(height: context.h(6)),
-                  Text(
-                    'Default luxury standards applied to all your relocation bookings.',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.textMuted,
-                      fontSize: context.sp(12),
-                    ),
-                  ),
-                  SizedBox(height: context.h(16)),
-                  SwitchListTile(
-                    value: ecoPacking,
-                    activeThumbColor: AppColors.gold,
-                    activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Eco-Friendly Wooden Crating',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: context.sp(13.5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Zero single-use plastics during residential packing',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                        fontSize: context.sp(11),
-                      ),
-                    ),
-                    onChanged: (v) => setSheetState(() => ecoPacking = v),
-                  ),
-                  SwitchListTile(
-                    value: fineArtHandling,
-                    activeThumbColor: AppColors.gold,
-                    activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Fine Art & Antique Protocol',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: context.sp(13.5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Temperature controlled vehicle requirement flag',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                        fontSize: context.sp(11),
-                      ),
-                    ),
-                    onChanged: (v) => setSheetState(() => fineArtHandling = v),
-                  ),
-                  SwitchListTile(
-                    value: priorityDispatch,
-                    activeThumbColor: AppColors.gold,
-                    activeTrackColor: AppColors.gold.withValues(alpha: 0.3),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      'Priority Concierge Dispatch',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontSize: context.sp(13.5),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Guaranteed elite crew lead assignment',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                        fontSize: context.sp(11),
-                      ),
-                    ),
-                    onChanged: (v) => setSheetState(() => priorityDispatch = v),
-                  ),
-                  SizedBox(height: context.h(16)),
-                  CustomButton(
-                    text: 'Save Preferences',
-                    height: context.h(46),
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      AppSnackBar.showSuccess(
-                        context,
-                        'White-Glove preferences updated.',
-                      );
-                    },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+  final String holder;
 
   @override
   Widget build(BuildContext context) {
-    final r = context.responsive;
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: r.maxContentWidth),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            r.pagePadding,
-            context.h(14),
-            r.pagePadding,
-            context.h(16),
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(context.r(20)),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2E2419), Color(0xFF1B140D), Color(0xFF120E0A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.gold.withValues(alpha: 0.5),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.gold.withValues(alpha: 0.18),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // ---------------------------------------------------------------
-              // 1. TOP HEADER & VIP BADGE
-              // ---------------------------------------------------------------
-              AppFadeAnimation(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'CONCIERGE ACCOUNT',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.overline.copyWith(
-                              fontSize: context.sp(10),
-                              letterSpacing: 1.8,
-                              color: AppColors.gold,
-                            ),
-                          ),
-                          SizedBox(height: context.h(2)),
-                          Text(
-                            'Profile & Settings',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.titleLarge.copyWith(
-                              fontSize: context.sp(20),
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(width: context.w(10)),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: context.w(11),
-                        vertical: context.h(5),
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF352618),
-                        borderRadius: BorderRadius.circular(context.r(20)),
-                        border: Border.all(
-                          color: AppColors.gold.withValues(alpha: 0.55),
-                          width: 1.2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.gold.withValues(alpha: 0.22),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.workspace_premium_rounded,
-                            color: AppColors.goldLight,
-                            size: context.r(14),
-                          ),
-                          SizedBox(width: context.w(5)),
-                          Text(
-                            'Platinum VIP',
-                            style: AppTextStyles.labelSmall.copyWith(
-                              color: AppColors.goldLight,
-                              fontSize: context.sp(11),
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+              Text(
+                'PLATINUM CONCIERGE',
+                style: AppTextStyles.overline.copyWith(
+                  color: AppColors.gold,
+                  letterSpacing: 2.0,
+                  fontSize: context.sp(10),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              SizedBox(height: context.h(16)),
-
-              // ---------------------------------------------------------------
-              // 2. BESPOKE VIP MEMBERSHIP CARD
-              // ---------------------------------------------------------------
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 100),
-                child: Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(context.r(20)),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(context.r(24)),
-                    border: Border.all(
-                      color: AppColors.gold.withValues(alpha: 0.38),
-                      width: 1.2,
-                    ),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF281E15),
-                        Color(0xFF1B140E),
-                        Color(0xFF120E0A),
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.gold.withValues(alpha: 0.12),
-                        blurRadius: 18,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 4),
-                      ),
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          // Glowing Monogram Avatar
-                          Container(
-                            width: context.r(58),
-                            height: context.r(58),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFE8C888), Color(0xFFC49A50)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.4),
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.gold.withValues(alpha: 0.4),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                _userName.trim().isNotEmpty
-                                    ? _userName
-                                        .trim()
-                                        .split(RegExp(r'\s+'))
-                                        .map((w) => w.isNotEmpty ? w[0] : '')
-                                        .take(2)
-                                        .join()
-                                        .toUpperCase()
-                                    : 'VC',
-                                style: AppTextStyles.headlineMedium.copyWith(
-                                  color: const Color(0xFF1B140E),
-                                  fontSize: context.sp(20),
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: context.w(14)),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        _userName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: AppTextStyles.titleLarge.copyWith(
-                                          fontSize: context.sp(18),
-                                          fontWeight: FontWeight.w800,
-                                          color: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                    ),
-                                    Icon(
-                                      Icons.verified_rounded,
-                                      color: AppColors.gold,
-                                      size: context.r(16),
-                                    ),
-                                  ],
-                                ),
-                                SizedBox(height: context.h(3)),
-                                Text(
-                                  _userEmail,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTextStyles.bodySmall.copyWith(
-                                    color: AppColors.textMuted,
-                                    fontSize: context.sp(12),
-                                  ),
-                                ),
-                                SizedBox(height: context.h(4)),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: context.w(7),
-                                    vertical: context.h(2),
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surfaceElevated,
-                                    borderRadius:
-                                        BorderRadius.circular(context.r(8)),
-                                    border: Border.all(
-                                      color: AppColors.gold
-                                          .withValues(alpha: 0.3),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    'ID: NX-88219 · Priority Access',
-                                    style: AppTextStyles.labelSmall.copyWith(
-                                      color: AppColors.gold,
-                                      fontSize: context.sp(10),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: context.h(18)),
-                      Divider(
-                        color: AppColors.gold.withValues(alpha: 0.2),
-                        height: 1,
-                      ),
-                      SizedBox(height: context.h(14)),
-                      // Stats Row
-                      Row(
-                        children: [
-                          _buildMiniStat(context, '4', 'Moves Completed'),
-                          Container(
-                            width: 1,
-                            height: context.h(26),
-                            color: AppColors.border.withValues(alpha: 0.6),
-                          ),
-                          _buildMiniStat(context, '£350', 'Referral Earned'),
-                          Container(
-                            width: 1,
-                            height: context.h(26),
-                            color: AppColors.border.withValues(alpha: 0.6),
-                          ),
-                          _buildMiniStat(context, '100%', 'White-Glove'),
-                        ],
-                      ),
-                    ],
+              Icon(Icons.contactless_rounded,
+                  color: AppColors.goldLight, size: context.r(22)),
+            ],
+          ),
+          SizedBox(height: context.h(18)),
+          Text(
+            '••••  ••••  ••••  4242',
+            style: AppTextStyles.titleLarge.copyWith(
+              color: AppColors.textPrimary,
+              fontSize: context.sp(17),
+              letterSpacing: 2.2,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          SizedBox(height: context.h(16)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  holder.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.labelMedium.copyWith(
+                    color: AppColors.textMuted,
+                    fontSize: context.sp(11),
+                    letterSpacing: 1.0,
                   ),
                 ),
               ),
-              SizedBox(height: context.h(22)),
-
-              // ---------------------------------------------------------------
-              // 3. GROUP 1: ACCOUNT & CREDENTIALS
-              // ---------------------------------------------------------------
-              _buildSectionHeader(context, 'ACCOUNT & CREDENTIALS'),
-              SizedBox(height: context.h(8)),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(context.r(22)),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.badge_outlined,
-                      label: 'Personal Information',
-                      subtitle: 'Name, email & phone number',
-                      onTap: _showPersonalInfoSheet,
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.location_on_outlined,
-                      label: 'Saved Residences',
-                      subtitle: '2 addresses · Windsor & Slough',
-                      onTap: _showSavedAddressesSheet,
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.credit_card_rounded,
-                      label: 'Payment & Billing',
-                      subtitle: 'Mastercard •••• 4242 · Primary Card',
-                      onTap: _showPaymentSheet,
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: context.h(20)),
-
-              // ---------------------------------------------------------------
-              // 4. GROUP 2: REWARDS & CONCIERGE PREFERENCES
-              // ---------------------------------------------------------------
-              _buildSectionHeader(context, 'REWARDS & CONCIERGE'),
-              SizedBox(height: context.h(8)),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(context.r(22)),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.card_giftcard_rounded,
-                      label: 'Refer & Earn Rewards',
-                      subtitle: 'Invite friends & earn £50 credit each',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          AnimationHelper.smoothRoute(
-                            page: const ReferEarnScreen(),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.auto_awesome_rounded,
-                      label: 'White-Glove Standards',
-                      subtitle: 'Eco-crates, fine art & priority crew',
-                      onTap: _showWhiteGlovePreferencesSheet,
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.notifications_none_rounded,
-                      label: 'Notifications & Alerts',
-                      subtitle: 'Live transit tracking & SMS alerts',
-                      onTap: () => NotificationSheet.show(context),
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.security_rounded,
-                      label: 'Insurance & Coverage',
-                      subtitle: 'Platinum £100,000 policy included',
-                      onTap: () {
-                        AppSnackBar.showInfo(
-                          context,
-                          'Platinum Transit Insurance Policy active for all moves.',
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: context.h(20)),
-
-              // ---------------------------------------------------------------
-              // 5. GROUP 3: LEGAL & APP INFO
-              // ---------------------------------------------------------------
-              _buildSectionHeader(context, 'LEGAL & APP INFO'),
-              SizedBox(height: context.h(8)),
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(context.r(22)),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Column(
-                  children: [
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.privacy_tip_outlined,
-                      label: 'Terms & Privacy Policy',
-                      subtitle: 'Noble Moving luxury terms v2.4',
-                      onTap: () {
-                        AppSnackBar.showInfo(
-                          context,
-                          'Noble Moving Terms & Conditions v2.4',
-                        );
-                      },
-                    ),
-                    _buildDivider(),
-                    _buildSettingsTile(
-                      context,
-                      icon: Icons.star_border_rounded,
-                      label: 'Rate Experience',
-                      subtitle: 'Share your concierge review',
-                      onTap: () {
-                        AppSnackBar.showSuccess(
-                          context,
-                          'Thank you for your rating!',
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: context.h(26)),
-
-              // ---------------------------------------------------------------
-              // 7. SIGN OUT BUTTON & METADATA
-              // ---------------------------------------------------------------
-              AppFadeAnimation(
-                delay: const Duration(milliseconds: 200),
-                child: Center(
-                  child: Column(
-                    children: [
-                      InkWell(
-                        onTap: () => _onSignOut(context),
-                        borderRadius: BorderRadius.circular(context.r(16)),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: context.w(24),
-                            vertical: context.h(13),
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2B1414),
-                            borderRadius: BorderRadius.circular(context.r(16)),
-                            border: Border.all(
-                              color: const Color(0xFFEF4444).withValues(alpha: 0.4),
-                              width: 1.2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFEF4444).withValues(alpha: 0.14),
-                                blurRadius: 12,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.logout_rounded,
-                                color: const Color(0xFFEF4444),
-                                size: context.r(18),
-                              ),
-                              SizedBox(width: context.w(8)),
-                              Text(
-                                'Sign Out of Platinum Account',
-                                style: AppTextStyles.labelLarge.copyWith(
-                                  color: const Color(0xFFEF4444),
-                                  fontSize: context.sp(13.5),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: context.h(14)),
-                      Text(
-                        'Next User Concierge · v2.4.0 (Build 108)',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          fontSize: context.sp(11),
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
+              Text(
+                'EXP 08/28',
+                style: AppTextStyles.labelMedium.copyWith(
+                  color: AppColors.gold,
+                  fontSize: context.sp(11),
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Padding(
-      padding: EdgeInsets.only(left: context.w(4)),
-      child: Text(
-        title,
-        style: AppTextStyles.overline.copyWith(
-          fontSize: context.sp(10.5),
-          letterSpacing: 1.5,
-          color: AppColors.textMuted,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniStat(BuildContext context, String value, String label) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: AppTextStyles.titleLarge.copyWith(
-              color: AppColors.gold,
-              fontSize: context.sp(16),
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          SizedBox(height: context.h(2)),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.bodySmall.copyWith(
-              color: AppColors.textMuted,
-              fontSize: context.sp(10.5),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSettingsTile(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    String? subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(context.r(16)),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: context.w(16),
-          vertical: context.h(13),
-        ),
-        child: Row(
-          children: [
-            // Quick-Action Inspired Amber Glowing Box
-            Container(
-              padding: EdgeInsets.all(context.r(8)),
-              decoration: BoxDecoration(
-                color: const Color(0xFF352618),
-                borderRadius: BorderRadius.circular(context.r(11)),
-                border: Border.all(
-                  color: AppColors.gold.withValues(alpha: 0.4),
-                  width: 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.gold.withValues(alpha: 0.16),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(
-                icon,
-                color: AppColors.goldLight,
-                size: context.r(17),
-              ),
-            ),
-            SizedBox(width: context.w(14)),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: AppColors.textPrimary,
-                      fontSize: context.sp(13.5),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    SizedBox(height: context.h(2)),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textMuted,
-                        fontSize: context.sp(11.5),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textMuted,
-              size: context.r(18),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDivider() {
-    return Divider(
-      height: 1,
-      color: AppColors.border.withValues(alpha: 0.5),
-      indent: context.w(56),
     );
   }
 }
